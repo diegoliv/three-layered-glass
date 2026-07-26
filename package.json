@@ -1,0 +1,99 @@
+{
+  "name": "three-layered-glass",
+  "version": "0.4.0",
+  "description": "Automatic per-pixel layered glass for Three.js and React Three Fiber with analytic and static triangle-BVH backends.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./r3f": {
+      "types": "./src/r3f/index.d.ts",
+      "import": "./src/r3f/index.js",
+      "default": "./src/r3f/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "docs/0.4.0-migration.md",
+    "docs/0.4.0-architecture.md",
+    "docs/0.3.0-migration.md",
+    "docs/0.2-vs-0.3-analysis.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build:demo": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test",
+    "check": "node scripts/check.mjs",
+    "prepublishOnly": "npm run check && npm test"
+  },
+  "keywords": [
+    "three",
+    "threejs",
+    "webgl2",
+    "glass",
+    "refraction",
+    "transmission",
+    "shader",
+    "react-three-fiber",
+    "r3f",
+    "postprocessing",
+    "ray-tracing",
+    "ray-traversal",
+    "order-independent-transparency",
+    "bvh",
+    "gltf",
+    "glb",
+    "buffergeometry",
+    "automatic-opaque-intersections"
+  ],
+  "author": "Diego de Oliveira",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diegoliv/three-layered-glass.git"
+  },
+  "bugs": {
+    "url": "https://github.com/diegoliv/three-layered-glass/issues"
+  },
+  "homepage": "https://diegoliv.github.io/three-layered-glass/",
+  "peerDependencies": {
+    "three": ">=0.163.0 <1",
+    "react": ">=18 <20",
+    "@react-three/fiber": ">=8 <10"
+  },
+  "devDependencies": {
+    "@react-three/fiber": "^9.6.1",
+    "@types/react": "^19.2.0",
+    "@types/three": "^0.185.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "three": "^0.185.1",
+    "vite": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "three-mesh-bvh": "^0.9.13"
+  }
+}
