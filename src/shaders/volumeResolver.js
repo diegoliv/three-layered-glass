@@ -478,41 +478,9 @@ export function createVolumeResolverFragmentShader({
       return color;
     }
 
-    mat3 tangentFrame(vec3 normal) {
-      vec3 helper = abs(normal.y) < 0.92
-        ? vec3(0.0, 1.0, 0.0)
-        : vec3(1.0, 0.0, 0.0);
-      vec3 tangent = normalize(cross(helper, normal));
-      vec3 bitangent = normalize(cross(normal, tangent));
-      return mat3(tangent, bitangent, normal);
-    }
-
-    vec3 perturbNormal(
-      vec3 normal,
-      vec2 sampleOffset,
-      vec3 worldPosition,
-      int volumeIndex,
-      int traversal,
-      float roughness
-    ) {
-      float phase = dot(worldPosition, vec3(1.71, 2.43, 3.17))
-        + float(volumeIndex) * 1.91
-        + float(traversal) * 2.37;
-      float angle = sin(phase) * 3.14159265;
-      mat2 rotation = mat2(
-        cos(angle), -sin(angle),
-        sin(angle),  cos(angle)
-      );
-      vec2 rotatedOffset = rotation * sampleOffset;
-      float spread = roughness * roughness * 0.92;
-      mat3 frame = tangentFrame(normal);
-      return normalize(frame * vec3(rotatedOffset * spread, 1.0));
-    }
-
     void traceGlass(
       vec2 screenUv,
       float spectralOffset,
-      vec2 roughSample,
       out vec3 radiance,
       out bool touchedGlass
     ) {
@@ -570,25 +538,14 @@ export function createVolumeResolverFragmentShader({
         touchedGlass = true;
         if (dot(rayDirection, entryNormal) > 0.0) entryNormal = -entryNormal;
 
-        vec3 microEntryNormal = perturbNormal(
-          entryNormal,
-          roughSample,
-          entryPosition,
-          volumeIndex,
-          traversal,
-          roughness
-        );
-        if (dot(rayDirection, microEntryNormal) > 0.0) {
-          microEntryNormal = -microEntryNormal;
-        }
 
         float entryCosine = clamp(
-          -dot(rayDirection, microEntryNormal),
+          -dot(rayDirection, entryNormal),
           0.0,
           1.0
         );
         float entryFresnel = fresnelSchlick(entryCosine, 1.0, ior);
-        vec3 reflectedDirection = reflect(rayDirection, microEntryNormal);
+        vec3 reflectedDirection = reflect(rayDirection, entryNormal);
         reflectedRadiance += throughput
           * entryFresnel
           * environmentColor(reflectedDirection, roughness)
@@ -596,7 +553,7 @@ export function createVolumeResolverFragmentShader({
 
         vec3 insideDirection = refract(
           rayDirection,
-          microEntryNormal,
+          entryNormal,
           1.0 / ior
         );
         if (dot(insideDirection, insideDirection) < 1e-7) {
@@ -619,27 +576,20 @@ export function createVolumeResolverFragmentShader({
           opticalDistance
         )) break;
 
-        vec3 microExitNormal = perturbNormal(
-          -exitNormal,
-          -roughSample * 0.72,
-          exitPosition,
-          volumeIndex,
-          traversal + 1,
-          roughness
-        );
-        if (dot(insideDirection, microExitNormal) > 0.0) {
-          microExitNormal = -microExitNormal;
+        vec3 interfaceExitNormal = -normalize(exitNormal);
+        if (dot(insideDirection, interfaceExitNormal) > 0.0) {
+          interfaceExitNormal = -interfaceExitNormal;
         }
 
         vec3 outsideDirection = refract(
           insideDirection,
-          microExitNormal,
+          interfaceExitNormal,
           ior
         );
         if (dot(outsideDirection, outsideDirection) < 1e-7) {
           reflectedRadiance += throughput
             * environmentColor(
-              reflect(insideDirection, microExitNormal),
+              reflect(insideDirection, interfaceExitNormal),
               roughness
             );
           throughput = vec3(0.0);
@@ -648,7 +598,7 @@ export function createVolumeResolverFragmentShader({
         outsideDirection = normalize(outsideDirection);
 
         float exitCosine = clamp(
-          -dot(insideDirection, microExitNormal),
+          -dot(insideDirection, interfaceExitNormal),
           0.0,
           1.0
         );
@@ -663,7 +613,7 @@ export function createVolumeResolverFragmentShader({
         float roughScatter = roughness * roughness;
         layerRadiance += throughput
           * attenuationColor
-          * (edgeFactor * 0.035 + roughScatter * 0.055)
+          * edgeFactor * 0.035
           * transmissionWeight
           * meta.w;
 
@@ -752,7 +702,6 @@ export function createVolumeResolverFragmentShader({
         traceGlass(
           screenUv,
           0.0,
-          vec2(0.0),
           greenRadiance,
           greenTouched
         );
@@ -762,21 +711,18 @@ export function createVolumeResolverFragmentShader({
         traceGlass(
           screenUv,
           -1.0,
-          vec2(-0.72, 0.36),
           redRadiance,
           redTouched
         );
         traceGlass(
           screenUv,
           0.0,
-          vec2(0.18, -0.78),
           greenRadiance,
           greenTouched
         );
         traceGlass(
           screenUv,
           1.0,
-          vec2(0.66, 0.42),
           blueRadiance,
           blueTouched
         );

@@ -5,6 +5,8 @@ import {
   LayeredGlassMaterial,
   sortGlassObjectsBackToFront,
 } from '../src/index.js';
+import { createBVHResolverFragmentShader } from '../src/shaders/bvhResolver.js';
+import { createVolumeResolverFragmentShader } from '../src/shaders/volumeResolver.js';
 
 test('LayeredGlassMaterial separates optical data from optional analytic proxies', () => {
   const material = new LayeredGlassMaterial({
@@ -32,6 +34,25 @@ test('LayeredGlassMaterial separates optical data from optional analytic proxies
   assert.equal(material.attenuationDistance, 4.5);
 
   material.dispose();
+});
+
+test('rough transmission keeps the geometric interface normals stable', () => {
+  const bvhShader = createBVHResolverFragmentShader({ roughSamples: 2 });
+  const analyticShader = createVolumeResolverFragmentShader();
+
+  for (const shader of [bvhShader, analyticShader]) {
+    assert.doesNotMatch(shader, /perturbNormal|microEntryNormal|microExitNormal/);
+  }
+
+  assert.match(
+    bvhShader,
+    /terminalRoughness \* terminalRoughness/,
+  );
+  assert.match(bvhShader, /#if ROUGH_SAMPLES > 1/);
+  assert.match(
+    analyticShader,
+    /roughnessIntegral \+= roughScatter/,
+  );
 });
 
 test('legacy object sorting remains exported for migration', () => {

@@ -24,7 +24,8 @@ const _edgeA = new Vector3();
 const _edgeB = new Vector3();
 const _faceNormal = new Vector3();
 const _normalMatrix = new Matrix3();
-const _color = new Color();
+const _baseColor = new Color();
+const _attenuationColor = new Color();
 
 function asMaterialArray(material) {
   return Array.isArray(material) ? material : [material];
@@ -174,8 +175,8 @@ function getSideCode(material, isGlass) {
 }
 
 function getMaterialColor(material, fallback = 0xffffff) {
-  if (material?.color?.isColor) return _color.copy(material.color);
-  return _color.set(fallback);
+  if (material?.color?.isColor) return _baseColor.copy(material.color);
+  return _baseColor.set(fallback);
 }
 
 function appendSurfaceMetadata(arrays, material, visibility, volumeId) {
@@ -194,8 +195,8 @@ function appendSurfaceMetadata(arrays, material, visibility, volumeId) {
   );
   const reflectionStrength = Number(material?.reflectionStrength ?? 1);
   const attenuationColor = material?.attenuationColor?.isColor
-    ? _color.copy(material.attenuationColor)
-    : _color.set(0xffffff);
+    ? _attenuationColor.copy(material.attenuationColor)
+    : _attenuationColor.set(0xffffff);
   const dispersion = Number(material?.dispersion ?? 0);
   const refractionReach = Number(material?.refractionReach ?? 2);
   const bodyTintStrength = Number(material?.bodyTintStrength ?? 1);

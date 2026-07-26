@@ -200,7 +200,7 @@ const glassComposer = new LayeredGlassComposer(renderer, {
 });
 ```
 
-| Tier | Resolution | Spectral paths | Rough paths | Max traversals |
+| Tier | Resolution | Spectral paths | Rough filter rings | Max traversals |
 | --- | ---: | ---: | ---: | ---: |
 | `low` | 0.5× | 1 | 1 | 4 |
 | `medium` | 0.75× | 3 | 1 | 8 |

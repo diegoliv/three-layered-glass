@@ -104,6 +104,32 @@ test('RaySceneBuilder discovers opaque meshes and arbitrary glass geometry', () 
   glass.material.dispose();
 });
 
+test('RaySceneBuilder preserves and refreshes glass attenuation color', () => {
+  const scene = new THREE.Scene();
+  const material = new LayeredGlassMaterial({
+    attenuationColor: '#ff0000',
+  });
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(), material);
+  scene.add(glass);
+
+  const builder = new RaySceneBuilder();
+  const result = builder.build(scene);
+  const opticalB = result.geometry.getAttribute('rayOpticalB');
+
+  assert.deepEqual(Array.from(opticalB.array.slice(0, 3)), [1, 0, 0]);
+
+  material.attenuationColor = '#00ff00';
+  assert.equal(
+    builder.refreshMaterialAttributes(result.geometry, result.triangleSources),
+    true,
+  );
+  assert.deepEqual(Array.from(opticalB.array.slice(0, 3)), [0, 1, 0]);
+
+  result.geometry.dispose();
+  glass.geometry.dispose();
+  material.dispose();
+});
+
 test('ray visibility is opt-out for ordinary opaque meshes', () => {
   const scene = new THREE.Scene();
   const mesh = new THREE.Mesh(

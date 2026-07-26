@@ -415,6 +415,7 @@ function updateGlassMaterials(property, value) {
   for (const record of panelRecords) {
     if (record.kind === 'glass') record.material[property] = value;
   }
+  layeredComposer.invalidateMaterial();
 }
 
 function bindRange(id, outputId, stateKey, property, digits = 2, rebuild = false) {
