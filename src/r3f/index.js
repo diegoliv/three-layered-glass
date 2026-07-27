@@ -57,8 +57,11 @@ export function LayeredGlassComposer({
   quality = 'medium',
   worker = true,
   sceneSync = 'auto',
+  sceneSyncInterval,
   autoOpaqueIntersections = true,
   resolutionScale,
+  coverageScale,
+  coverageSamples,
   spectral,
   roughSamples,
   maxMedia = 8,
@@ -89,8 +92,11 @@ export function LayeredGlassComposer({
       quality,
       worker,
       sceneSync,
+      sceneSyncInterval,
       autoOpaqueIntersections,
       resolutionScale,
+      coverageScale,
+      coverageSamples,
       spectral,
       roughSamples,
       maxMedia,
@@ -115,8 +121,8 @@ export function LayeredGlassComposer({
       qualityKey,
       worker,
       sceneSync,
+      sceneSyncInterval,
       autoOpaqueIntersections,
-      resolutionScale,
       spectral,
       roughSamples,
       maxMedia,
@@ -152,6 +158,12 @@ export function LayeredGlassComposer({
     manageRendererInfo,
     autoOpaqueIntersections,
   ]);
+
+  useEffect(() => {
+    if (resolutionScale != null) composer.setResolutionScale(resolutionScale);
+    if (coverageScale != null) composer.setCoverageScale(coverageScale);
+    if (coverageSamples != null) composer.setCoverageSamples(coverageSamples);
+  }, [composer, resolutionScale, coverageScale, coverageSamples]);
 
   useEffect(() => {
     onCreated?.(composer);
@@ -397,8 +409,8 @@ export const LayeredGlassEffectPass = forwardRef(
           : JSON.stringify(passOptions.quality),
         passOptions.worker,
         passOptions.sceneSync,
+        passOptions.sceneSyncInterval,
         passOptions.autoOpaqueIntersections,
-        passOptions.resolutionScale,
         passOptions.spectral,
         passOptions.roughSamples,
         passOptions.maxMedia,
@@ -424,6 +436,15 @@ export const LayeredGlassEffectPass = forwardRef(
       pass.autoDiscoverBlockers = passOptions.autoDiscoverBlockers ?? true;
       pass.foregroundLayer = passOptions.foregroundLayer ?? null;
       pass.depthMode = passOptions.depthMode ?? 'opaque';
+      if (passOptions.resolutionScale != null) {
+        pass.setResolutionScale(passOptions.resolutionScale);
+      }
+      if (passOptions.coverageScale != null) {
+        pass.setCoverageScale(passOptions.coverageScale);
+      }
+      if (passOptions.coverageSamples != null) {
+        pass.setCoverageSamples(passOptions.coverageSamples);
+      }
       pass.glassObjects = passOptions.glassObjects ?? null;
       pass.blockerObjects = passOptions.blockerObjects
         ?? passOptions.blockers

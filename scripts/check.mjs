@@ -40,6 +40,7 @@ if (!packageJson.peerDependenciesMeta?.['@react-three/fiber']?.optional) {
 const sourceIndex = readFileSync(join(root, 'src/index.js'), 'utf8');
 for (const requiredExport of [
   'BVHLayeredGlassComposer',
+  'LayeredGlassAdaptiveQuality',
   'LayeredRayScene',
   'RaySceneBuilder',
   'QUALITY_PRESETS',
@@ -54,7 +55,7 @@ const bvhComposerSource = readFileSync(
   'utf8',
 );
 for (const requiredFeature of [
-  'LayeredGlass.BVH.Coverage',
+  'LayeredGlass.BVH.Surface',
   'LayeredGlass.BVH.RayResolve',
   'LayeredGlass.BVH.Composite',
   'autoOpaqueIntersections',

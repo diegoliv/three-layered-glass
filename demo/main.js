@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import {
+  LayeredGlassAdaptiveQuality,
   LayeredGlassComposer,
   LayeredGlassMaterial,
   supportsLayeredGlass,
@@ -41,8 +42,12 @@ function fail(message, error) {
   errorElement.classList.add('is-visible');
 }
 
+const isMobile = window.matchMedia('(max-width: 680px)').matches;
+const maximumPixelRatio = isMobile ? 1 : 1.25;
+const initialResolutionScale = isMobile ? 0.55 : 0.75;
+
 const renderer = new THREE.WebGLRenderer({
-  antialias: true,
+  antialias: false,
   alpha: false,
   depth: true,
   powerPreference: 'high-performance',
@@ -52,20 +57,6 @@ if (!supportsLayeredGlass(renderer)) {
   fail('WebGL2 is required for the layered glass BVH demo.');
   throw new Error('WebGL2 is required.');
 }
-
-const isMobile = window.matchMedia('(max-width: 680px)').matches;
-const mobileDeviceMemory = Number(navigator.deviceMemory ?? 4);
-const mobileHardwareConcurrency = Number(navigator.hardwareConcurrency ?? 4);
-const mobileHighFidelity = isMobile
-  && mobileDeviceMemory >= 6
-  && mobileHardwareConcurrency >= 6;
-const maximumPixelRatio = isMobile
-  ? (mobileHighFidelity ? 1.4 : 1.25)
-  : 1.25;
-const mobileResolutionScale = mobileHighFidelity ? 0.70 : 0.65;
-const renderProfileLabel = isMobile
-  ? `mobile ${mobileHighFidelity ? 'high' : 'balanced'}`
-  : 'desktop';
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maximumPixelRatio));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -199,16 +190,44 @@ scene.add(panelGroup);
 const layeredComposer = new LayeredGlassComposer(renderer, {
   backend: 'bvh',
   quality: isMobile ? 'low' : 'medium',
-  qualityOverrides: isMobile
-    ? { resolutionScale: mobileResolutionScale }
-    : undefined,
+  resolutionScale: initialResolutionScale,
+  coverageScale: 1,
+  coverageSamples: isMobile ? 0 : 2,
+  colorType: isMobile ? THREE.UnsignedByteType : undefined,
+  maxMedia: isMobile ? 4 : 8,
   worker: true,
-  sceneSync: 'auto',
+  sceneSync: 'manual',
   layered: true,
   autoDiscover: true,
   autoOpaqueIntersections: true,
   depthMode: 'opaque',
 });
+
+const adaptiveQuality = isMobile
+  ? new LayeredGlassAdaptiveQuality(layeredComposer, {
+      minScale: 0.45,
+      maxScale: 0.62,
+      initialScale: initialResolutionScale,
+      targetFrameTime: 1000 / 30,
+      adjustmentInterval: 1200,
+      stepDown: 0.05,
+      stepUp: 0.025,
+    })
+  : null;
+let preparedMemoryReport = null;
+
+function renderProfileLabel() {
+  if (!adaptiveQuality) return 'desktop';
+  return `mobile adaptive · ${adaptiveQuality.scale.toFixed(2)}× ray`;
+}
+
+function updateBufferBadge() {
+  if (!preparedMemoryReport) return;
+  bufferBadge.textContent = [
+    `BVH · ${preparedMemoryReport.triangles.toLocaleString()} tris`,
+    renderProfileLabel(),
+  ].join(' · ');
+}
 
 const state = {
   layered: true,
@@ -324,7 +343,7 @@ function rebuildPanels({ resetCamera = true } = {}) {
     PANEL_WIDTH,
     PANEL_HEIGHT,
     state.panelThickness,
-    6,
+    isMobile ? 4 : 6,
     radius,
   );
 
@@ -377,6 +396,7 @@ function rebuildPanels({ resetCamera = true } = {}) {
   opaqueCountBadge.textContent = `${state.panelCount - glassCount} opaque`;
   compactStatus.textContent = `${state.panelCount} panels`;
   layeredComposer.invalidateScene();
+  renderer.shadowMap.needsUpdate = true;
 
   if (resetCamera) fitCamera();
 }
@@ -528,20 +548,23 @@ layeredComposer.prepare(scene, {
     bufferBadge.textContent = `Building BVH · ${Math.round(progress * 100)}%`;
   },
 }).then(() => {
-  const report = layeredComposer.getMemoryReport();
-  bufferBadge.textContent = [
-    `BVH · ${report.triangles.toLocaleString()} tris`,
-    renderProfileLabel,
-  ].join(' · ');
+  preparedMemoryReport = layeredComposer.getMemoryReport();
+  updateBufferBadge();
 }).catch((error) => {
   fail('Unable to prepare the triangle BVH', error);
 });
 
+let previousFrameTime = performance.now();
 function render(time) {
+  const frameTime = time - previousFrameTime;
+  previousFrameTime = time;
   controls.update();
+  if (adaptiveQuality?.update(frameTime, time)) updateBufferBadge();
   layeredComposer.render(scene, camera);
   updateFps(time);
   requestAnimationFrame(render);
 }
 
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 requestAnimationFrame(render);

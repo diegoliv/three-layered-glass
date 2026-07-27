@@ -1,5 +1,6 @@
 import { AnalyticLayeredGlassComposer } from './AnalyticLayeredGlassComposer.js';
 import { BVHLayeredGlassComposer } from './BVHLayeredGlassComposer.js';
+import { resolveLayeredGlassQuality } from './ray-scene/RayScene.js';
 
 const BACKENDS = new Set(['auto', 'analytic', 'bvh']);
 
@@ -110,6 +111,22 @@ export class LayeredGlassComposer {
 
   get height() {
     return this._activeComposer()?.height ?? 1;
+  }
+
+  get resolutionScale() {
+    if (this._bvh) return this._bvh.resolutionScale;
+    return this._options.resolutionScale ?? resolveLayeredGlassQuality(
+      this._options.quality ?? 'medium',
+      this._options.qualityOverrides,
+    ).resolutionScale;
+  }
+
+  get coverageScale() {
+    return this._bvh?.coverageScale ?? this._options.coverageScale ?? 1;
+  }
+
+  get coverageSamples() {
+    return this._bvh?.coverageSamples ?? this._options.coverageSamples ?? 0;
   }
 
   _activeComposer() {
@@ -238,6 +255,33 @@ export class LayeredGlassComposer {
   setSize(width, height) {
     this._analytic?.setSize(width, height);
     this._bvh?.setSize(width, height);
+    return this;
+  }
+
+  setResolutionScale(value) {
+    const nextValue = Math.min(1, Math.max(0.1, Number(value)));
+    if (!Number.isFinite(nextValue)) return this;
+    this._options.resolutionScale = nextValue;
+    this._bvh?.setResolutionScale(nextValue);
+    return this;
+  }
+
+  setCoverageScale(value) {
+    const nextValue = Math.min(1, Math.max(0.25, Number(value)));
+    if (!Number.isFinite(nextValue)) return this;
+    this._options.coverageScale = nextValue;
+    this._bvh?.setCoverageScale(nextValue);
+    return this;
+  }
+
+  setCoverageSamples(value) {
+    const nextValue = Math.min(
+      this.renderer.capabilities.maxSamples ?? 0,
+      Math.max(0, Math.floor(Number(value))),
+    );
+    if (!Number.isFinite(nextValue)) return this;
+    this._options.coverageSamples = nextValue;
+    this._bvh?.setCoverageSamples(nextValue);
     return this;
   }
 

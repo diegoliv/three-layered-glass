@@ -50,8 +50,11 @@ export interface LayeredGlassComposerProps {
   quality?: LayeredGlassQualityName | LayeredGlassQualityOptions;
   worker?: boolean;
   sceneSync?: 'auto' | 'manual';
+  sceneSyncInterval?: number;
   autoOpaqueIntersections?: boolean;
   resolutionScale?: number;
+  coverageScale?: number;
+  coverageSamples?: number;
   spectral?: boolean;
   roughSamples?: number;
   maxMedia?: number;

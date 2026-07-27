@@ -16,8 +16,11 @@ export class LayeredGlassPass extends Pass {
     this.quality = options.quality ?? 'medium';
     this.worker = options.worker ?? true;
     this.sceneSync = options.sceneSync ?? 'auto';
+    this.sceneSyncInterval = options.sceneSyncInterval;
     this.autoOpaqueIntersections = options.autoOpaqueIntersections ?? true;
     this.resolutionScale = options.resolutionScale;
+    this.coverageScale = options.coverageScale;
+    this.coverageSamples = options.coverageSamples;
     this.spectral = options.spectral;
     this.roughSamples = options.roughSamples;
     this.maxMedia = options.maxMedia;
@@ -71,8 +74,11 @@ export class LayeredGlassPass extends Pass {
       quality: this.quality,
       worker: this.worker,
       sceneSync: this.sceneSync,
+      sceneSyncInterval: this.sceneSyncInterval,
       autoOpaqueIntersections: this.autoOpaqueIntersections,
       resolutionScale: this.resolutionScale,
+      coverageScale: this.coverageScale,
+      coverageSamples: this.coverageSamples,
       spectral: this.spectral,
       roughSamples: this.roughSamples,
       maxMedia: this.maxMedia,
@@ -112,6 +118,15 @@ export class LayeredGlassPass extends Pass {
     composer.autoDiscoverBlockers = this.autoDiscoverBlockers;
     composer.foregroundLayer = this.foregroundLayer;
     composer.depthMode = this.depthMode;
+    if (this.resolutionScale != null) {
+      composer.setResolutionScale(this.resolutionScale);
+    }
+    if (this.coverageScale != null) {
+      composer.setCoverageScale(this.coverageScale);
+    }
+    if (this.coverageSamples != null) {
+      composer.setCoverageSamples(this.coverageSamples);
+    }
 
     composer.render(this.scene, this.camera, {
       glassObjects: this.glassObjects ?? undefined,
@@ -129,6 +144,24 @@ export class LayeredGlassPass extends Pass {
     this._width = Math.max(1, Math.floor(width));
     this._height = Math.max(1, Math.floor(height));
     this._composer?.setSize(this._width, this._height);
+  }
+
+  setResolutionScale(value) {
+    this.resolutionScale = value;
+    this._composer?.setResolutionScale(value);
+    return this;
+  }
+
+  setCoverageScale(value) {
+    this.coverageScale = value;
+    this._composer?.setCoverageScale(value);
+    return this;
+  }
+
+  setCoverageSamples(value) {
+    this.coverageSamples = value;
+    this._composer?.setCoverageSamples(value);
+    return this;
   }
 
   dispose() {

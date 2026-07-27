@@ -200,7 +200,7 @@ const glassComposer = new LayeredGlassComposer(renderer, {
 });
 ```
 
-| Tier | Resolution | Spectral paths | Rough filter rings | Max traversals |
+| Tier | BVH resolution | Spectral paths | Rough filter rings | Max traversals |
 | --- | ---: | ---: | ---: | ---: |
 | `low` | 0.5× | 1 | 1 | 4 |
 | `medium` | 0.75× | 3 | 1 | 8 |
@@ -212,13 +212,43 @@ Override individual values:
 const glassComposer = new LayeredGlassComposer(renderer, {
   quality: 'medium',
   resolutionScale: 0.6,
+  coverageScale: 1,
+  coverageSamples: 0,
   maxTraversals: 6,
   spectral: false,
   roughSamples: 1,
 });
 ```
 
-The heavy BVH resolver is preceded by a rasterized glass-coverage pass, so pixels outside visible glass silhouettes return before triangle traversal. The resolver may run below full resolution, but its result is composited over the full-resolution opaque scene; lowering the quality tier does not downscale ordinary non-glass rendering.
+The heavy BVH resolver is preceded by a rasterized glass-surface pass, so pixels outside visible glass silhouettes return before triangle traversal. This pass keeps the nearest front-surface reflection and coverage at `coverageScale` (full resolution by default), while transmission alone runs at `resolutionScale`. The edge-aware composite reconstructs the low-resolution transmission inside the high-resolution silhouette. Lowering the BVH resolution therefore does not downscale the opaque scene or the primary glass contour.
+
+`coverageSamples` controls optional MSAA for the surface pass. It defaults to `0`; use `2` or `4` only when the device budget allows it. All three controls can change at runtime without rebuilding the BVH:
+
+```js
+glassComposer.setResolutionScale(0.55);
+glassComposer.setCoverageScale(1);
+glassComposer.setCoverageSamples(0);
+```
+
+For devices with widely different fill-rate budgets, the optional controller adjusts only the expensive BVH transmission buffer:
+
+```js
+import { LayeredGlassAdaptiveQuality } from 'three-layered-glass';
+
+const adaptive = new LayeredGlassAdaptiveQuality(glassComposer, {
+  minScale: 0.45,
+  maxScale: 0.65,
+  targetFrameTime: 1000 / 30,
+});
+
+let previousTime = performance.now();
+function render(time) {
+  adaptive.update(time - previousTime, time);
+  previousTime = time;
+  glassComposer.render(scene, camera);
+  requestAnimationFrame(render);
+}
+```
 
 ## Scene preparation and synchronization
 
@@ -250,13 +280,23 @@ glassMaterial.dispersion = 0.012;
 glassComposer.invalidateMaterial(glassMesh);
 ```
 
-Material-only changes refresh GPU metadata without rebuilding the BVH when triangle classification is unchanged. With `sceneSync: 'auto'`, optical changes are detected automatically.
+Material-only changes refresh GPU metadata without rebuilding the BVH when triangle classification is unchanged. With `sceneSync: 'auto'`, optical changes are detected automatically. Signature checks are rate-limited to once every `sceneSyncInterval` milliseconds (`250` by default) to avoid rebuilding large strings every frame.
 
 For fully manual synchronization:
 
 ```js
 const glassComposer = new LayeredGlassComposer(renderer, {
   sceneSync: 'manual',
+});
+```
+
+Manual mode is recommended for known-static scenes and explicit editor pipelines. Use `invalidateMaterial()` for optical changes and `invalidateScene()` / `invalidateGeometry()` followed by `prepare()` for geometry or transform changes.
+
+```js
+// Or tune automatic polling when external code mutates the scene.
+const autoComposer = new LayeredGlassComposer(renderer, {
+  sceneSync: 'auto',
+  sceneSyncInterval: 500,
 });
 ```
 

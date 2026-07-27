@@ -117,9 +117,16 @@ export interface LayeredGlassComposerOptions {
   qualityOverrides?: LayeredGlassQualityOptions;
   worker?: boolean;
   sceneSync?: LayeredGlassSceneSync;
+  /** Minimum milliseconds between automatic scene signature checks. */
+  sceneSyncInterval?: number;
   autoPrepare?: boolean;
   autoOpaqueIntersections?: boolean;
+  /** Resolution of the expensive BVH transmission pass, from 0.1 to 1. */
   resolutionScale?: number;
+  /** Resolution of the rasterized glass surface/coverage pass, from 0.25 to 1. */
+  coverageScale?: number;
+  /** MSAA samples for the rasterized glass surface pass. Defaults to 0. */
+  coverageSamples?: number;
   spectral?: boolean;
   roughSamples?: number;
   maxMedia?: number;
@@ -144,6 +151,47 @@ export interface LayeredGlassComposerOptions {
   /** Analytic backend option. */
   opaqueSteps?: number;
   onWarning?: (message: string, object?: Object3D) => void;
+}
+
+export interface LayeredGlassAdaptiveQualityOptions {
+  minScale?: number;
+  maxScale?: number;
+  initialScale?: number;
+  targetFrameTime?: number;
+  adjustmentInterval?: number;
+  smoothing?: number;
+  stepDown?: number;
+  stepUp?: number;
+  downThreshold?: number;
+  upThreshold?: number;
+}
+
+export interface LayeredGlassResolutionController {
+  readonly resolutionScale?: number;
+  setResolutionScale(value: number): unknown;
+}
+
+export class LayeredGlassAdaptiveQuality {
+  readonly composer: LayeredGlassResolutionController;
+  readonly minScale: number;
+  readonly maxScale: number;
+  readonly targetFrameTime: number;
+  readonly adjustmentInterval: number;
+  readonly smoothing: number;
+  readonly stepDown: number;
+  readonly stepUp: number;
+  readonly downThreshold: number;
+  readonly upThreshold: number;
+  scale: number;
+  averageFrameTime: number;
+  elapsedTime: number;
+  lastAdjustmentTime: number;
+  constructor(
+    composer: LayeredGlassResolutionController,
+    options?: LayeredGlassAdaptiveQualityOptions,
+  );
+  update(frameTime: number, time?: number): boolean;
+  reset(scale?: number): this;
 }
 
 export interface LayeredGlassRenderOptions {
@@ -219,6 +267,9 @@ export class LayeredGlassComposer {
   readonly opaqueDepthTexture: Texture | null;
   readonly width: number;
   readonly height: number;
+  readonly resolutionScale: number;
+  readonly coverageScale: number;
+  readonly coverageSamples: number;
   constructor(renderer: WebGLRenderer, options?: LayeredGlassComposerOptions);
   prepare(scene: Scene, options?: LayeredGlassPrepareOptions): Promise<this>;
   invalidateScene(): this;
@@ -243,6 +294,9 @@ export class LayeredGlassComposer {
   removeForeground(...objects: Object3D[]): this;
   clearForeground(): this;
   setSize(width: number, height: number): this;
+  setResolutionScale(value: number): this;
+  setCoverageScale(value: number): this;
+  setCoverageSamples(value: number): this;
   render(scene: Scene, camera: Camera, options?: LayeredGlassRenderOptions): Texture;
   getMemoryReport(): LayeredGlassMemoryReport;
   dispose(): void;
@@ -261,6 +315,9 @@ export class BVHLayeredGlassComposer {
   readonly outputRenderTarget: WebGLRenderTarget | null;
   readonly depthTexture: Texture | null;
   readonly opaqueDepthTexture: Texture | null;
+  resolutionScale: number;
+  coverageScale: number;
+  coverageSamples: number;
   constructor(renderer: WebGLRenderer, options?: LayeredGlassComposerOptions);
   prepare(scene: Scene, options?: LayeredGlassPrepareOptions): Promise<this>;
   invalidateScene(): this;
@@ -274,6 +331,9 @@ export class BVHLayeredGlassComposer {
   removeForeground(...objects: Object3D[]): this;
   clearForeground(): this;
   setSize(width: number, height: number): this;
+  setResolutionScale(value: number): this;
+  setCoverageScale(value: number): this;
+  setCoverageSamples(value: number): this;
   render(scene: Scene, camera: Camera, options?: LayeredGlassRenderOptions): Texture;
   getMemoryReport(): LayeredGlassMemoryReport;
   dispose(): void;
@@ -344,13 +404,21 @@ export class LayeredGlassPass extends Pass {
   camera: Camera;
   backend: LayeredGlassBackend;
   quality: LayeredGlassQualityName | LayeredGlassQualityOptions;
+  sceneSync: LayeredGlassSceneSync;
+  sceneSyncInterval?: number;
   layered: boolean;
+  resolutionScale?: number;
+  coverageScale?: number;
+  coverageSamples?: number;
   readonly composer: LayeredGlassComposer | null;
   readonly outputTexture: Texture | null;
   readonly depthTexture: Texture | null;
   constructor(scene: Scene, camera: Camera, options?: LayeredGlassPassOptions);
   prepare(options?: LayeredGlassPrepareOptions): Promise<LayeredGlassComposer>;
   setSize(width: number, height: number): void;
+  setResolutionScale(value: number): this;
+  setCoverageScale(value: number): this;
+  setCoverageSamples(value: number): this;
   dispose(): void;
 }
 

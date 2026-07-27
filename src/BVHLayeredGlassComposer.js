@@ -29,6 +29,8 @@ import {
   copyFragmentShader,
   coverageCompositeFragmentShader,
   fullscreenVertexShader,
+  glassSurfaceFragmentShader,
+  glassSurfaceVertexShader,
   roughTransmissionBlurFragmentShader,
 } from './shaders/passes.js';
 import {
@@ -45,6 +47,11 @@ const _drawingBufferSize = new Vector2();
 const _clearColor = new Color();
 const _viewport = new Vector4();
 const _scissor = new Vector4();
+
+function finiteNumber(value, fallback) {
+  const resolved = Number(value);
+  return Number.isFinite(resolved) ? resolved : fallback;
+}
 
 function createDepthTexture(width, height, name) {
   const texture = new DepthTexture(width, height, UnsignedIntType);
@@ -195,10 +202,14 @@ function materialOpticalSignature(material) {
   ].join(':');
 }
 
-function createSceneSignatures(scene, autoDiscoverGlass = true) {
+function createSceneSignatures(
+  scene,
+  autoDiscoverGlass = true,
+  updateMatrices = true,
+) {
   const geometryParts = [];
   const materialParts = [];
-  scene.updateMatrixWorld(true);
+  if (updateMatrices) scene.updateMatrixWorld(true);
 
   scene.traverseVisible((object) => {
     if (!object.isMesh || !object.geometry?.attributes?.position) return;
@@ -299,13 +310,30 @@ export class BVHLayeredGlassComposer {
     this.foregroundLayer = options.foregroundLayer ?? null;
     this.depthMode = options.depthMode ?? 'opaque';
     this.sceneSync = options.sceneSync ?? 'auto';
+    this.sceneSyncInterval = Math.max(
+      0,
+      finiteNumber(options.sceneSyncInterval, 250),
+    );
     this.autoPrepare = options.autoPrepare ?? true;
     this.quality = resolveLayeredGlassQuality(
       options.quality ?? 'medium',
       options.qualityOverrides,
     );
-    this.resolutionScale = options.resolutionScale
-      ?? this.quality.resolutionScale;
+    this.resolutionScale = Math.min(
+      1,
+      Math.max(
+        0.1,
+        finiteNumber(options.resolutionScale, this.quality.resolutionScale),
+      ),
+    );
+    this.coverageScale = Math.min(
+      1,
+      Math.max(0.25, finiteNumber(options.coverageScale, 1)),
+    );
+    this.coverageSamples = Math.min(
+      renderer.capabilities.maxSamples ?? 0,
+      Math.max(0, Math.floor(finiteNumber(options.coverageSamples, 0))),
+    );
     this.maxTraversals = options.maxTraversals
       ?? this.quality.maxTraversals;
     this.colorType = options.colorType ?? (
@@ -325,6 +353,7 @@ export class BVHLayeredGlassComposer {
 
     this._registeredForegroundObjects = new Set();
     this._foregroundVisibilityOverrides = new Map();
+    this._surfaceMaterialSources = new Map();
     this._explicitRayObjects = new Set();
     this._userRayExclude = options.rayScene?.exclude ?? null;
     this._glassObjects = [];
@@ -333,6 +362,7 @@ export class BVHLayeredGlassComposer {
     this._resolveSize = new Vector2(1, 1);
     this._scene = null;
     this._sceneSignatures = null;
+    this._lastSceneSyncTime = -Infinity;
     this._preparePromise = null;
     this._invalidated = true;
     this._materialInvalidated = false;
@@ -409,7 +439,7 @@ export class BVHLayeredGlassComposer {
         uRayTexture: { value: null },
         uBlurTexture: { value: null },
         uFrontTexture: { value: null },
-        uCoverageTexture: { value: null },
+        uHasRoughBlur: { value: 0 },
       },
       depthTest: false,
       depthWrite: false,
@@ -424,15 +454,44 @@ export class BVHLayeredGlassComposer {
       blending: NoBlending,
       toneMapped: true,
     });
-    this._coverageMaterial = new MeshBasicMaterial({
-      name: 'LayeredGlassCoverage',
-      color: 0xffffff,
+    this._surfaceMaterial = new ShaderMaterial({
+      name: 'LayeredGlassBVHSurface',
+      glslVersion: GLSL3,
+      vertexShader: glassSurfaceVertexShader,
+      fragmentShader: glassSurfaceFragmentShader,
+      uniforms: {
+        uCameraPosition: { value: new Vector3() },
+        uBaseDepth: { value: null },
+        uIor: { value: 1.48 },
+        uRoughness: { value: 0 },
+        uReflectionStrength: { value: 1 },
+      },
       side: DoubleSide,
       depthTest: true,
       depthWrite: true,
       blending: NoBlending,
       toneMapped: false,
     });
+    this._surfaceMaterial.onBeforeRender = (
+      renderer,
+      scene,
+      camera,
+      geometry,
+      object,
+      group,
+    ) => {
+      const source = this._surfaceMaterialSources.get(object);
+      const material = Array.isArray(source)
+        ? source[group?.materialIndex ?? 0]
+        : source;
+      const uniforms = this._surfaceMaterial.uniforms;
+      uniforms.uCameraPosition.value.setFromMatrixPosition(camera.matrixWorld);
+      uniforms.uIor.value = Number(material?.ior ?? 1.48);
+      uniforms.uRoughness.value = Number(material?.roughness ?? 0);
+      uniforms.uReflectionStrength.value = Number(
+        material?.reflectionStrength ?? 1,
+      );
+    };
     this._skipMaterial = new MeshBasicMaterial({
       name: 'LayeredGlassSkip',
       colorWrite: false,
@@ -642,6 +701,7 @@ export class BVHLayeredGlassComposer {
     this._sceneSignatures = createSceneSignatures(
       scene,
       this.autoDiscover,
+      false,
     );
     this._materialInvalidated = false;
     return true;
@@ -658,21 +718,12 @@ export class BVHLayeredGlassComposer {
     uniforms.uBaseColorAttribute.value = this.rayScene.baseColorAttribute;
   }
 
-  _allocateTargets(width, height) {
-    this._baseTarget?.dispose();
+  _allocateRayTargets(width, height) {
     this._rayTarget?.dispose();
     this._roughBlurHalfTarget?.dispose();
     this._roughBlurQuarterTarget?.dispose();
     this._roughBlurEighthTarget?.dispose();
     this._roughBlurOutputTarget?.dispose();
-    this._resolveTarget?.dispose();
-    this._coverageTarget?.dispose();
-
-    this._baseTarget = createTarget(width, height, {
-      type: this.colorType,
-      depthTexture: true,
-      name: 'LayeredGlass.BVH.Base',
-    });
 
     const resolveWidth = Math.max(
       1,
@@ -693,7 +744,6 @@ export class BVHLayeredGlassComposer {
 
     this._rayTarget = createTarget(resolveWidth, resolveHeight, {
       type: this.colorType,
-      count: 2,
       depthBuffer: false,
       name: 'LayeredGlass.BVH.RayResolve',
     });
@@ -725,17 +775,77 @@ export class BVHLayeredGlassComposer {
       depthBuffer: false,
       name: 'LayeredGlass.BVH.RoughBlurOutput',
     });
-    this._coverageTarget = createTarget(width, height, {
-      type: UnsignedByteType,
-      minFilter: LinearFilter,
-      magFilter: LinearFilter,
-      samples: Math.min(2, this.renderer.capabilities.maxSamples ?? 0),
-      name: 'LayeredGlass.BVH.Coverage',
+  }
+
+  _allocateSurfaceTarget(width, height) {
+    this._surfaceTarget?.dispose();
+    const surfaceWidth = Math.max(
+      1,
+      Math.floor(width * this.coverageScale),
+    );
+    const surfaceHeight = Math.max(
+      1,
+      Math.floor(height * this.coverageScale),
+    );
+    this._surfaceTarget = createTarget(surfaceWidth, surfaceHeight, {
+      type: this.colorType,
+      samples: this.coverageSamples,
+      name: 'LayeredGlass.BVH.Surface',
     });
+  }
+
+  _allocateFullResolutionTargets(width, height) {
+    this._baseTarget?.dispose();
+    this._resolveTarget?.dispose();
+
+    this._baseTarget = createTarget(width, height, {
+      type: this.colorType,
+      depthTexture: true,
+      name: 'LayeredGlass.BVH.Base',
+    });
+    this._allocateSurfaceTarget(width, height);
     this._resolveTarget = createTarget(width, height, {
       type: this.colorType,
       name: 'LayeredGlass.BVH.Composite',
     });
+  }
+
+  _allocateTargets(width, height) {
+    this._allocateFullResolutionTargets(width, height);
+    this._allocateRayTargets(width, height);
+  }
+
+  setResolutionScale(value) {
+    const nextValue = Math.min(1, Math.max(0.1, Number(value)));
+    if (!Number.isFinite(nextValue) || nextValue === this.resolutionScale) {
+      return this;
+    }
+    this.resolutionScale = nextValue;
+    this._allocateRayTargets(this._size.x, this._size.y);
+    return this;
+  }
+
+  setCoverageScale(value) {
+    const nextValue = Math.min(1, Math.max(0.25, Number(value)));
+    if (!Number.isFinite(nextValue) || nextValue === this.coverageScale) {
+      return this;
+    }
+    this.coverageScale = nextValue;
+    this._allocateSurfaceTarget(this._size.x, this._size.y);
+    return this;
+  }
+
+  setCoverageSamples(value) {
+    const nextValue = Math.min(
+      this.renderer.capabilities.maxSamples ?? 0,
+      Math.max(0, Math.floor(Number(value))),
+    );
+    if (!Number.isFinite(nextValue) || nextValue === this.coverageSamples) {
+      return this;
+    }
+    this.coverageSamples = nextValue;
+    this._allocateSurfaceTarget(this._size.x, this._size.y);
+    return this;
   }
 
   setSize(width, height) {
@@ -838,9 +948,10 @@ export class BVHLayeredGlassComposer {
     return state;
   }
 
-  _applyCoverageFilter(scene, glassObjects) {
+  _applySurfaceFilter(scene, glassObjects) {
     const state = new Map();
     const glassSet = new Set(glassObjects);
+    this._surfaceMaterialSources.clear();
 
     scene.traverseVisible((object) => {
       if (!isRenderableObject(object)) return;
@@ -850,20 +961,21 @@ export class BVHLayeredGlassComposer {
       }
 
       const materials = asMaterialArray(object.material);
+      this._surfaceMaterialSources.set(object, object.material);
       if (Array.isArray(object.material)) {
         setObjectMaterial(
           state,
           object,
           materials.map((material) => (
             isGlassSurface(object, material, this.autoDiscover)
-              ? this._coverageMaterial
+              ? this._surfaceMaterial
               : this._skipMaterial
           )),
         );
       } else if (
         isGlassSurface(object, object.material, this.autoDiscover)
       ) {
-        setObjectMaterial(state, object, this._coverageMaterial);
+        setObjectMaterial(state, object, this._surfaceMaterial);
       } else {
         setObjectVisible(state, object, false);
       }
@@ -872,7 +984,7 @@ export class BVHLayeredGlassComposer {
     return state;
   }
 
-  _renderFullscreen(material, target, clear = true) {
+  _renderFullscreen(material, target, clear = false) {
     this._fullscreenQuad.material = material;
     this.renderer.setRenderTarget(target);
     if (clear) {
@@ -889,18 +1001,21 @@ export class BVHLayeredGlassComposer {
     this._renderFullscreen(this._roughTransmissionBlurMaterial, target);
   }
 
-  _renderCoverage(scene, camera, glassObjects) {
-    const state = this._applyCoverageFilter(scene, glassObjects);
+  _renderSurface(scene, camera, glassObjects) {
+    this._surfaceMaterial.uniforms.uBaseDepth.value
+      = this._baseTarget.depthTexture;
+    const state = this._applySurfaceFilter(scene, glassObjects);
     const previousOverride = scene.overrideMaterial;
     try {
       scene.overrideMaterial = null;
-      this.renderer.setRenderTarget(this._coverageTarget);
+      this.renderer.setRenderTarget(this._surfaceTarget);
       this.renderer.setClearColor(0x000000, 0);
       this.renderer.clear(true, true, true);
       this.renderer.render(scene, camera);
     } finally {
       scene.overrideMaterial = previousOverride;
       restoreObjectState(state);
+      this._surfaceMaterialSources.clear();
     }
   }
 
@@ -931,8 +1046,22 @@ export class BVHLayeredGlassComposer {
   }
 
   _syncScene(scene) {
-    if (this.sceneSync !== 'auto' || !this.rayScene.ready) return;
-    const signatures = createSceneSignatures(scene, this.autoDiscover);
+    if (
+      this.sceneSync !== 'auto'
+      || !this.rayScene.ready
+      || this._invalidated
+      || this._materialInvalidated
+    ) return;
+    const now = typeof performance === 'undefined'
+      ? Date.now()
+      : performance.now();
+    if (now - this._lastSceneSyncTime < this.sceneSyncInterval) return;
+    this._lastSceneSyncTime = now;
+    const signatures = createSceneSignatures(
+      scene,
+      this.autoDiscover,
+      false,
+    );
     if (
       !this._sceneSignatures
       || signatures.geometry !== this._sceneSignatures.geometry
@@ -1012,11 +1141,11 @@ export class BVHLayeredGlassComposer {
         && this.rayScene.glassTriangleCount > 0
         && glassObjects.length > 0
       ) {
-        this._renderCoverage(scene, camera, glassObjects);
+        this._renderSurface(scene, camera, glassObjects);
         const uniforms = this._resolverMaterial.uniforms;
         uniforms.uBaseColor.value = this._baseTarget.texture;
         uniforms.uBaseDepth.value = this._baseTarget.depthTexture;
-        uniforms.uCoverage.value = this._coverageTarget.texture;
+        uniforms.uCoverage.value = this._surfaceTarget.texture;
         uniforms.uResolution.value.copy(this._resolveSize);
         uniforms.uInverseProjection.value.copy(camera.projectionMatrixInverse);
         uniforms.uCameraMatrixWorld.value.copy(camera.matrixWorld);
@@ -1026,9 +1155,13 @@ export class BVHLayeredGlassComposer {
         uniforms.uLayered.value = this.layered ? 1 : 0;
         this._renderFullscreen(this._resolverMaterial, this._rayTarget);
 
-        const transmissionTexture = this._rayTarget.textures[0];
+        const transmissionTexture = this._rayTarget.texture;
+        const hasRoughBlur = hasRoughTransmission(
+          glassObjects,
+          this.autoDiscover,
+        );
         let blurredTransmissionTexture = transmissionTexture;
-        if (hasRoughTransmission(glassObjects, this.autoDiscover)) {
+        if (hasRoughBlur) {
           this._renderRoughTransmissionBlur(
             transmissionTexture,
             this._roughBlurHalfTarget,
@@ -1066,8 +1199,8 @@ export class BVHLayeredGlassComposer {
         compositeUniforms.uBaseTexture.value = this._baseTarget.texture;
         compositeUniforms.uRayTexture.value = transmissionTexture;
         compositeUniforms.uBlurTexture.value = blurredTransmissionTexture;
-        compositeUniforms.uFrontTexture.value = this._rayTarget.textures[1];
-        compositeUniforms.uCoverageTexture.value = this._coverageTarget.texture;
+        compositeUniforms.uFrontTexture.value = this._surfaceTarget.texture;
+        compositeUniforms.uHasRoughBlur.value = hasRoughBlur ? 1 : 0;
         this._renderFullscreen(this._compositeMaterial, this._resolveTarget);
       } else {
         this._copyMaterial.uniforms.uTexture.value = this._baseTarget.texture;
@@ -1123,13 +1256,13 @@ export class BVHLayeredGlassComposer {
     this._roughBlurEighthTarget.dispose();
     this._roughBlurOutputTarget.dispose();
     this._resolveTarget.dispose();
-    this._coverageTarget.dispose();
+    this._surfaceTarget.dispose();
     this._resolverMaterial.dispose();
     this._copyMaterial.dispose();
     this._roughTransmissionBlurMaterial.dispose();
     this._compositeMaterial.dispose();
     this._displayMaterial.dispose();
-    this._coverageMaterial.dispose();
+    this._surfaceMaterial.dispose();
     this._skipMaterial.dispose();
     this._fullscreenQuad.geometry.dispose();
   }

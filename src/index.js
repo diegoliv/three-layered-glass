@@ -1,4 +1,5 @@
 export { LayeredGlassMaterial } from './LayeredGlassMaterial.js';
+export { LayeredGlassAdaptiveQuality } from './LayeredGlassAdaptiveQuality.js';
 export {
   LayeredGlassComposer,
   supportsLayeredGlass,

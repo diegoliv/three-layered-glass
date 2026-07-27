@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Rendering quality and performance
+
+- Split the BVH pipeline into a high-resolution raster surface/coverage pass and a separately scalable transmission pass, preserving glass silhouettes and primary reflections at lower ray resolutions.
+- Added edge-aware transmission reconstruction, single-hit reuse across spectral paths, and roughness-dependent base sampling.
+- Added runtime `setResolutionScale()`, `setCoverageScale()`, and `setCoverageSamples()` controls across the core composer, pass, and React Three Fiber integrations.
+- Added `LayeredGlassAdaptiveQuality` for frame-time-driven transmission scaling without BVH rebuilds.
+- Rate-limited automatic scene signature checks and removed redundant fullscreen clears.
+- Updated the mobile demo with an adaptive ray budget, reduced render-target bandwidth, static shadow updates, and a lower-cost UI compositing path.
+
 ## 0.4.0
 
 ### Static triangle-BVH backend

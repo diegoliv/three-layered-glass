@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { Pass } from 'three/addons/postprocessing/Pass.js';
 import {
+  LayeredGlassAdaptiveQuality,
   LayeredGlassComposer,
   LayeredGlassMaterial,
   LayeredGlassPass,
@@ -26,7 +27,7 @@ function createRendererStub() {
 
   return {
     isWebGLRenderer: true,
-    capabilities: { isWebGL2: true },
+    capabilities: { isWebGL2: true, maxSamples: 4 },
     getContext() {
       return context;
     },
@@ -43,6 +44,24 @@ test('LayeredGlassRenderer remains a compatibility alias', () => {
   alias.dispose();
 });
 
+test('composer exposes runtime BVH resolution and surface controls', () => {
+  const composer = new LayeredGlassComposer(createRendererStub(), {
+    quality: 'medium',
+  });
+
+  assert.equal(composer.resolutionScale, 0.75);
+  assert.equal(composer.coverageScale, 1);
+  assert.equal(composer.coverageSamples, 0);
+  assert.equal(composer.setResolutionScale(0.55), composer);
+  assert.equal(composer.setCoverageScale(0.8), composer);
+  assert.equal(composer.setCoverageSamples(2), composer);
+  assert.equal(composer.resolutionScale, 0.55);
+  assert.equal(composer.coverageScale, 0.8);
+  assert.equal(composer.coverageSamples, 2);
+
+  composer.dispose();
+});
+
 test('LayeredGlassPass exposes the automatic backend options', () => {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera();
@@ -57,6 +76,39 @@ test('LayeredGlassPass exposes the automatic backend options', () => {
   assert.equal(pass.quality, 'low');
 
   pass.dispose();
+});
+
+test('adaptive quality changes only the scalable BVH transmission buffer', () => {
+  const scales = [];
+  const composer = {
+    resolutionScale: 0.55,
+    setResolutionScale(value) {
+      this.resolutionScale = value;
+      scales.push(value);
+    },
+  };
+  const adaptive = new LayeredGlassAdaptiveQuality(composer, {
+    minScale: 0.45,
+    maxScale: 0.65,
+    initialScale: 0.55,
+    targetFrameTime: 1000 / 30,
+    adjustmentInterval: 250,
+    smoothing: 1,
+    stepDown: 0.05,
+    stepUp: 0.025,
+  });
+
+  assert.deepEqual(scales, [0.55]);
+  assert.equal(adaptive.update(50, 0), true);
+  assert.equal(adaptive.scale, 0.5);
+  assert.equal(adaptive.update(50, 100), false);
+  assert.equal(adaptive.update(50, 300), true);
+  assert.equal(adaptive.scale, 0.45);
+  assert.equal(adaptive.update(16, 600), true);
+  assert.equal(adaptive.scale, 0.475);
+  assert.equal(adaptive.reset(0.9), adaptive);
+  assert.equal(adaptive.scale, 0.65);
+  assert.deepEqual(scales, [0.55, 0.5, 0.45, 0.475, 0.65]);
 });
 
 test('legacy 0.2 classes remain available explicitly', () => {

@@ -10,6 +10,7 @@ import { createBVHResolverFragmentShader } from '../src/shaders/bvhResolver.js';
 import { createVolumeResolverFragmentShader } from '../src/shaders/volumeResolver.js';
 import {
   coverageCompositeFragmentShader,
+  glassSurfaceFragmentShader,
   roughTransmissionBlurFragmentShader,
 } from '../src/shaders/passes.js';
 
@@ -71,11 +72,11 @@ test('rough transmission keeps the geometric interface normals stable', () => {
   );
   assert.match(bvhShader, /smoothstep\(0\.45, 1\.0, terminalRoughness\)/);
   assert.match(bvhShader, /firstRoughnessAlpha/);
-  assert.match(
-    bvhShader,
-    /layout\(location = 1\) out vec4 outFrontSurface/,
-  );
-  assert.match(bvhShader, /frontSurfaceRadiance/);
+  assert.match(bvhShader, /uvec4 initialFaceIndices/);
+  assert.match(bvhShader, /if \(traversal == 0\)/);
+  assert.doesNotMatch(bvhShader, /outFrontSurface|frontSurfaceRadiance/);
+  assert.match(glassSurfaceFragmentShader, /uBaseDepth/);
+  assert.match(glassSurfaceFragmentShader, /fresnelSchlick/);
   assert.match(roughTransmissionBlurFragmentShader, /uOffset/);
   assert.match(
     roughTransmissionBlurFragmentShader,
@@ -87,6 +88,8 @@ test('rough transmission keeps the geometric interface normals stable', () => {
   assert.doesNotMatch(roughTransmissionBlurFragmentShader, /uDirection/);
   assert.match(coverageCompositeFragmentShader, /uBlurTexture/);
   assert.match(coverageCompositeFragmentShader, /uFrontTexture/);
+  assert.match(coverageCompositeFragmentShader, /uHasRoughBlur/);
+  assert.match(coverageCompositeFragmentShader, /sampleEdgeAwareTransmission/);
   assert.match(coverageCompositeFragmentShader, /blurAmount/);
   assert.doesNotMatch(coverageCompositeFragmentShader, /filterRoughRay/);
   assert.match(composerSource, /RoughBlurEighth/);
@@ -94,11 +97,13 @@ test('rough transmission keeps the geometric interface normals stable', () => {
     composerSource.match(/_renderRoughTransmissionBlur\(/g)?.length,
     7,
   );
-  assert.match(composerSource, /_coverageTarget = createTarget\(width, height/);
-  assert.match(composerSource, /samples: Math\.min\(2,/);
-  assert.match(demoSource, /mobileResolutionScale = mobileHighFidelity/);
-  assert.match(demoSource, /mobileHighFidelity \? 1\.4 : 1\.25/);
-  assert.match(demoSource, /isMobile \? 0\.44 : 0\.50/);
+  assert.match(composerSource, /LayeredGlass\.BVH\.Surface/);
+  assert.match(composerSource, /samples: this\.coverageSamples/);
+  assert.match(composerSource, /setResolutionScale\(value\)/);
+  assert.doesNotMatch(composerSource, /count: 2/);
+  assert.match(demoSource, /new LayeredGlassAdaptiveQuality/);
+  assert.match(demoSource, /maximumPixelRatio = isMobile \? 1 : 1\.25/);
+  assert.match(demoSource, /initialResolutionScale = isMobile \? 0\.55 : 0\.75/);
   assert.match(bvhShader, /frostAmount \* 0\.30/);
   assert.match(analyticShader, /float layerClarity = 1\.0/);
   assert.match(analyticShader, /roughScatter \* 12\.0/);
