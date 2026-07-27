@@ -49,6 +49,10 @@ test('rough transmission keeps the geometric interface normals stable', () => {
     'utf8',
   );
   const demoHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const demoSource = readFileSync(
+    new URL('../demo/main.js', import.meta.url),
+    'utf8',
+  );
 
   for (const shader of [bvhShader, analyticShader]) {
     assert.doesNotMatch(shader, /perturbNormal|microEntryNormal|microExitNormal/);
@@ -90,6 +94,11 @@ test('rough transmission keeps the geometric interface normals stable', () => {
     composerSource.match(/_renderRoughTransmissionBlur\(/g)?.length,
     7,
   );
+  assert.match(composerSource, /_coverageTarget = createTarget\(width, height/);
+  assert.match(composerSource, /samples: Math\.min\(2,/);
+  assert.match(demoSource, /mobileResolutionScale = mobileHighFidelity/);
+  assert.match(demoSource, /mobileHighFidelity \? 1\.4 : 1\.25/);
+  assert.match(demoSource, /isMobile \? 0\.44 : 0\.50/);
   assert.match(bvhShader, /frostAmount \* 0\.30/);
   assert.match(analyticShader, /float layerClarity = 1\.0/);
   assert.match(analyticShader, /roughScatter \* 12\.0/);

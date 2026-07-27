@@ -54,7 +54,18 @@ if (!supportsLayeredGlass(renderer)) {
 }
 
 const isMobile = window.matchMedia('(max-width: 680px)').matches;
-const maximumPixelRatio = isMobile ? 1 : 1.25;
+const mobileDeviceMemory = Number(navigator.deviceMemory ?? 4);
+const mobileHardwareConcurrency = Number(navigator.hardwareConcurrency ?? 4);
+const mobileHighFidelity = isMobile
+  && mobileDeviceMemory >= 6
+  && mobileHardwareConcurrency >= 6;
+const maximumPixelRatio = isMobile
+  ? (mobileHighFidelity ? 1.4 : 1.25)
+  : 1.25;
+const mobileResolutionScale = mobileHighFidelity ? 0.70 : 0.65;
+const renderProfileLabel = isMobile
+  ? `mobile ${mobileHighFidelity ? 'high' : 'balanced'}`
+  : 'desktop';
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maximumPixelRatio));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -188,6 +199,9 @@ scene.add(panelGroup);
 const layeredComposer = new LayeredGlassComposer(renderer, {
   backend: 'bvh',
   quality: isMobile ? 'low' : 'medium',
+  qualityOverrides: isMobile
+    ? { resolutionScale: mobileResolutionScale }
+    : undefined,
   worker: true,
   sceneSync: 'auto',
   layered: true,
@@ -266,14 +280,16 @@ function fitCamera() {
   const depthSpan = Math.max(0, state.panelCount - 1) * spacing.z;
   const lateralSpan = Math.max(0, state.panelCount - 1) * spacing.x;
   const verticalFov = THREE.MathUtils.degToRad(camera.fov);
-  const heightDistance = (PANEL_HEIGHT * 0.72) / Math.tan(verticalFov * 0.5);
+  const heightDistance = (
+    PANEL_HEIGHT * (isMobile ? 0.79 : 0.72)
+  ) / Math.tan(verticalFov * 0.5);
   const distance = heightDistance
     + depthSpan * 0.13
     + lateralSpan * 0.08
     + 0.75;
   const target = new THREE.Vector3(
     0,
-    PANEL_HEIGHT * 0.50,
+    PANEL_HEIGHT * (isMobile ? 0.44 : 0.50),
     -depthSpan * 0.04,
   );
   const direction = new THREE.Vector3(0.54, 0.14, 1).normalize();
@@ -513,7 +529,10 @@ layeredComposer.prepare(scene, {
   },
 }).then(() => {
   const report = layeredComposer.getMemoryReport();
-  bufferBadge.textContent = `BVH · ${report.triangles.toLocaleString()} tris`;
+  bufferBadge.textContent = [
+    `BVH · ${report.triangles.toLocaleString()} tris`,
+    renderProfileLabel,
+  ].join(' · ');
 }).catch((error) => {
   fail('Unable to prepare the triangle BVH', error);
 });

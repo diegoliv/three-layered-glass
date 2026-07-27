@@ -187,7 +187,7 @@ export const coverageCompositeFragmentShader = /* glsl */ `
     vec3 frontSurfaceColor = texture(uFrontTexture, vUv).rgb;
     vec3 rayColor = transmissionColor + frontSurfaceColor;
     float coverage = texture(uCoverageTexture, vUv).r;
-    float blend = smoothstep(0.015, 0.45, coverage);
+    float blend = smoothstep(0.08, 0.92, coverage);
     outColor = vec4(mix(baseColor, rayColor, blend), 1.0);
   }
 `;

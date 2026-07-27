@@ -66,6 +66,7 @@ function createTarget(width, height, options = {}) {
     depthBuffer: options.depthBuffer ?? true,
     stencilBuffer: false,
     generateMipmaps: false,
+    samples: options.samples ?? 0,
     count: options.count ?? 1,
   });
   const targetName = options.name ?? 'LayeredGlass.Target';
@@ -724,10 +725,11 @@ export class BVHLayeredGlassComposer {
       depthBuffer: false,
       name: 'LayeredGlass.BVH.RoughBlurOutput',
     });
-    this._coverageTarget = createTarget(resolveWidth, resolveHeight, {
+    this._coverageTarget = createTarget(width, height, {
       type: UnsignedByteType,
       minFilter: LinearFilter,
       magFilter: LinearFilter,
+      samples: Math.min(2, this.renderer.capabilities.maxSamples ?? 0),
       name: 'LayeredGlass.BVH.Coverage',
     });
     this._resolveTarget = createTarget(width, height, {
