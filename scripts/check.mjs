@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const packageLockSource = readFileSync(join(root, 'package-lock.json'), 'utf8');
 
 
 if (packageJson.version !== '1.0.0') {
@@ -44,6 +45,12 @@ if (!packageJson.scripts?.typecheck) {
 
 if (!packageJson.dependencies?.['three-mesh-bvh']) {
   throw new Error('three-mesh-bvh must be declared as a runtime dependency.');
+}
+
+if (!packageLockSource.includes('node_modules/@rollup/rollup-linux-x64-gnu')) {
+  throw new Error(
+    'package-lock.json must include the Rollup Linux binary used by GitHub Actions.',
+  );
 }
 
 for (const subpath of [
