@@ -174,18 +174,49 @@ for (const file of collectJavaScriptFiles(join(root, 'demo'))) {
   execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
 }
 
-const demoSource = readFileSync(join(root, 'demo/main.js'), 'utf8');
-const demoAdvancedImport = demoSource.match(
-  /import\s*\{([^}]+)\}\s*from '\.\.\/src\/advanced\.js';/,
+const demoSource = readFileSync(join(root, 'demo/main.jsx'), 'utf8');
+const modelLayoutSource = readFileSync(
+  join(root, 'demo/modelLayout.js'),
+  'utf8',
 );
-if (
-  !demoAdvancedImport
-  || !demoAdvancedImport[1].includes('LayeredGlassComposer')
-  || !demoAdvancedImport[1].includes('LayeredGlassAdaptiveQuality')
-) {
-  throw new Error(
-    'The tuned demo must import advanced compositor controls from src/advanced.js.',
-  );
+for (const requiredR3FFeature of [
+  "from '@react-three/fiber'",
+  "from '../src/r3f/index.js'",
+  "from '../src/r3f/advanced.js'",
+  'Canvas',
+  'LayeredGlassComposer',
+  'LayeredGlassMaterial',
+  'useLayeredGlass',
+  'useLoader',
+  'GLTFLoader',
+  'DRACOLoader',
+  'backend="bvh"',
+  'Object scale',
+  'horizontalRadius',
+  'createModelQueueLayout',
+]) {
+  if (!demoSource.includes(requiredR3FFeature)) {
+    throw new Error(
+      `The demo is missing its R3F/GLB workflow marker: ${requiredR3FFeature}`,
+    );
+  }
+}
+
+for (const requiredLayoutFeature of [
+  'MODEL_GAP',
+  'radii[index - 1]',
+  'radii[index]',
+  'QUEUE_DIRECTION_X',
+]) {
+  if (!modelLayoutSource.includes(requiredLayoutFeature)) {
+    throw new Error(
+      `The GLB queue is missing its spacing marker: ${requiredLayoutFeature}`,
+    );
+  }
+}
+
+if (!statSync(join(root, 'static/objects.glb')).isFile()) {
+  throw new Error('The R3F demo GLB is missing: static/objects.glb');
 }
 
 for (const deprecatedDemoApi of ['RGBELoader', 'PCFSoftShadowMap']) {

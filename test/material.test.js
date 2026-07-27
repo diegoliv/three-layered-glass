@@ -50,7 +50,7 @@ test('rough transmission keeps the geometric interface normals stable', () => {
   );
   const demoHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const demoSource = readFileSync(
-    new URL('../demo/main.js', import.meta.url),
+    new URL('../demo/main.jsx', import.meta.url),
     'utf8',
   );
 
@@ -106,17 +106,22 @@ test('rough transmission keeps the geometric interface normals stable', () => {
   assert.match(composerSource, /LayeredGlass\.BVH\.TransmissionFXAA/);
   assert.match(composerSource, /setTransmissionAntialias\(value\)/);
   assert.doesNotMatch(composerSource, /count: 2/);
-  assert.match(demoSource, /new LayeredGlassAdaptiveQuality/);
-  assert.match(demoSource, /maximumPixelRatio = isMobile \? 1 : 1\.25/);
-  assert.match(demoSource, /initialResolutionScale = isMobile \? 0\.55 : 0\.75/);
-  assert.match(demoSource, /coverageSamples: 2/);
-  assert.match(demoSource, /maxTraversals: isMobile \? 8 : undefined/);
-  assert.match(demoSource, /transmissionAntialias: isMobile/);
+  assert.match(demoSource, /from '@react-three\/fiber'/);
+  assert.match(demoSource, /from '\.\.\/src\/r3f\/index\.js'/);
+  assert.match(demoSource, /from '\.\.\/src\/r3f\/advanced\.js'/);
+  assert.match(demoSource, /<LayeredGlassComposer/);
+  assert.match(demoSource, /<LayeredGlassMaterial/);
+  assert.match(demoSource, /backend="bvh"/);
+  assert.match(demoSource, /adaptive=\{IS_MOBILE \? MOBILE_ADAPTIVE_QUALITY : false\}/);
+  assert.match(demoSource, /const MAXIMUM_PIXEL_RATIO = IS_MOBILE \? 1 : 1\.25/);
+  assert.match(demoSource, /useLoader\(\s*GLTFLoader,\s*OBJECTS_URL/);
+  assert.match(demoSource, /new URL\('\.\.\/static\/objects\.glb'/);
   assert.match(bvhShader, /frostAmount \* 0\.30/);
   assert.match(analyticShader, /float layerClarity = 1\.0/);
   assert.match(analyticShader, /roughScatter \* 12\.0/);
   assert.match(analyticShader, /frostAmount \* 0\.30/);
-  assert.match(demoHtml, /id="roughness"[^>]*max="1"/);
+  assert.match(demoHtml, /src="\.\/demo\/main\.jsx"/);
+  assert.match(demoSource, /label="Rough transmission"[\s\S]*?max=\{1\}/);
   assert.match(
     analyticShader,
     /roughnessIntegral \+= roughScatter/,
