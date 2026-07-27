@@ -8,6 +8,7 @@
 - Added edge-aware transmission reconstruction, single-hit reuse across spectral paths, and roughness-dependent base sampling.
 - Added runtime `setResolutionScale()`, `setCoverageScale()`, and `setCoverageSamples()` controls across the core composer, pass, and React Three Fiber integrations.
 - Added `LayeredGlassAdaptiveQuality` for frame-time-driven transmission scaling without BVH rebuilds.
+- Added optional validity-aware transmission FXAA for low-resolution internal contours, with runtime controls across core, pass, and React Three Fiber integrations.
 - Rate-limited automatic scene signature checks and removed redundant fullscreen clears.
 - Updated the mobile demo with an adaptive ray budget, reduced render-target bandwidth, static shadow updates, and a lower-cost UI compositing path.
 

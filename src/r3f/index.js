@@ -62,6 +62,7 @@ export function LayeredGlassComposer({
   resolutionScale,
   coverageScale,
   coverageSamples,
+  transmissionAntialias,
   spectral,
   roughSamples,
   maxMedia = 8,
@@ -97,6 +98,7 @@ export function LayeredGlassComposer({
       resolutionScale,
       coverageScale,
       coverageSamples,
+      transmissionAntialias,
       spectral,
       roughSamples,
       maxMedia,
@@ -163,7 +165,16 @@ export function LayeredGlassComposer({
     if (resolutionScale != null) composer.setResolutionScale(resolutionScale);
     if (coverageScale != null) composer.setCoverageScale(coverageScale);
     if (coverageSamples != null) composer.setCoverageSamples(coverageSamples);
-  }, [composer, resolutionScale, coverageScale, coverageSamples]);
+    if (transmissionAntialias != null) {
+      composer.setTransmissionAntialias(transmissionAntialias);
+    }
+  }, [
+    composer,
+    resolutionScale,
+    coverageScale,
+    coverageSamples,
+    transmissionAntialias,
+  ]);
 
   useEffect(() => {
     onCreated?.(composer);
@@ -444,6 +455,9 @@ export const LayeredGlassEffectPass = forwardRef(
       }
       if (passOptions.coverageSamples != null) {
         pass.setCoverageSamples(passOptions.coverageSamples);
+      }
+      if (passOptions.transmissionAntialias != null) {
+        pass.setTransmissionAntialias(passOptions.transmissionAntialias);
       }
       pass.glassObjects = passOptions.glassObjects ?? null;
       pass.blockerObjects = passOptions.blockerObjects

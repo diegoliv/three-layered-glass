@@ -12,6 +12,7 @@ import {
   coverageCompositeFragmentShader,
   glassSurfaceFragmentShader,
   roughTransmissionBlurFragmentShader,
+  transmissionFxaaFragmentShader,
 } from '../src/shaders/passes.js';
 
 test('LayeredGlassMaterial separates optical data from optional analytic proxies', () => {
@@ -86,6 +87,10 @@ test('rough transmission keeps the geometric interface normals stable', () => {
   assert.match(roughTransmissionBlurFragmentShader, /vec2 axial/);
   assert.match(roughTransmissionBlurFragmentShader, /supportAlpha/);
   assert.doesNotMatch(roughTransmissionBlurFragmentShader, /uDirection/);
+  assert.match(transmissionFxaaFragmentShader, /validTransmissionSample/);
+  assert.match(transmissionFxaaFragmentShader, /textureSize\(uSourceTexture, 0\)/);
+  assert.match(transmissionFxaaFragmentShader, /centerSample\.a/);
+  assert.match(transmissionFxaaFragmentShader, /lumaRange/);
   assert.match(coverageCompositeFragmentShader, /uBlurTexture/);
   assert.match(coverageCompositeFragmentShader, /uFrontTexture/);
   assert.match(coverageCompositeFragmentShader, /uHasRoughBlur/);
@@ -100,10 +105,15 @@ test('rough transmission keeps the geometric interface normals stable', () => {
   assert.match(composerSource, /LayeredGlass\.BVH\.Surface/);
   assert.match(composerSource, /samples: this\.coverageSamples/);
   assert.match(composerSource, /setResolutionScale\(value\)/);
+  assert.match(composerSource, /LayeredGlass\.BVH\.TransmissionFXAA/);
+  assert.match(composerSource, /setTransmissionAntialias\(value\)/);
   assert.doesNotMatch(composerSource, /count: 2/);
   assert.match(demoSource, /new LayeredGlassAdaptiveQuality/);
   assert.match(demoSource, /maximumPixelRatio = isMobile \? 1 : 1\.25/);
   assert.match(demoSource, /initialResolutionScale = isMobile \? 0\.55 : 0\.75/);
+  assert.match(demoSource, /coverageSamples: 2/);
+  assert.match(demoSource, /maxTraversals: isMobile \? 8 : undefined/);
+  assert.match(demoSource, /transmissionAntialias: isMobile/);
   assert.match(bvhShader, /frostAmount \* 0\.30/);
   assert.match(analyticShader, /float layerClarity = 1\.0/);
   assert.match(analyticShader, /roughScatter \* 12\.0/);

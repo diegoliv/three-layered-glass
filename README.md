@@ -214,6 +214,7 @@ const glassComposer = new LayeredGlassComposer(renderer, {
   resolutionScale: 0.6,
   coverageScale: 1,
   coverageSamples: 0,
+  transmissionAntialias: true,
   maxTraversals: 6,
   spectral: false,
   roughSamples: 1,
@@ -222,12 +223,15 @@ const glassComposer = new LayeredGlassComposer(renderer, {
 
 The heavy BVH resolver is preceded by a rasterized glass-surface pass, so pixels outside visible glass silhouettes return before triangle traversal. This pass keeps the nearest front-surface reflection and coverage at `coverageScale` (full resolution by default), while transmission alone runs at `resolutionScale`. The edge-aware composite reconstructs the low-resolution transmission inside the high-resolution silhouette. Lowering the BVH resolution therefore does not downscale the opaque scene or the primary glass contour.
 
-`coverageSamples` controls optional MSAA for the surface pass. It defaults to `0`; use `2` or `4` only when the device budget allows it. All three controls can change at runtime without rebuilding the BVH:
+`coverageSamples` controls optional MSAA for the surface pass. It defaults to `0`; use `2` or `4` only when the device budget allows it.
+
+`transmissionAntialias` enables a validity-aware FXAA pass at the scalable ray-buffer resolution. It smooths refracted internal contours without applying MSAA to the expensive BVH resolver or the full-resolution scene. All four controls can change at runtime without rebuilding the BVH:
 
 ```js
 glassComposer.setResolutionScale(0.55);
 glassComposer.setCoverageScale(1);
 glassComposer.setCoverageSamples(0);
+glassComposer.setTransmissionAntialias(true);
 ```
 
 For devices with widely different fill-rate budgets, the optional controller adjusts only the expensive BVH transmission buffer:

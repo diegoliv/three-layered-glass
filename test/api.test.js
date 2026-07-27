@@ -52,12 +52,15 @@ test('composer exposes runtime BVH resolution and surface controls', () => {
   assert.equal(composer.resolutionScale, 0.75);
   assert.equal(composer.coverageScale, 1);
   assert.equal(composer.coverageSamples, 0);
+  assert.equal(composer.transmissionAntialias, false);
   assert.equal(composer.setResolutionScale(0.55), composer);
   assert.equal(composer.setCoverageScale(0.8), composer);
   assert.equal(composer.setCoverageSamples(2), composer);
+  assert.equal(composer.setTransmissionAntialias(true), composer);
   assert.equal(composer.resolutionScale, 0.55);
   assert.equal(composer.coverageScale, 0.8);
   assert.equal(composer.coverageSamples, 2);
+  assert.equal(composer.transmissionAntialias, true);
 
   composer.dispose();
 });
@@ -68,12 +71,16 @@ test('LayeredGlassPass exposes the automatic backend options', () => {
   const pass = new LayeredGlassPass(scene, camera, {
     backend: 'bvh',
     quality: 'low',
+    transmissionAntialias: true,
   });
 
   assert.ok(pass instanceof Pass);
   assert.equal(pass.needsSwap, true);
   assert.equal(pass.backend, 'bvh');
   assert.equal(pass.quality, 'low');
+  assert.equal(pass.transmissionAntialias, true);
+  assert.equal(pass.setTransmissionAntialias(false), pass);
+  assert.equal(pass.transmissionAntialias, false);
 
   pass.dispose();
 });

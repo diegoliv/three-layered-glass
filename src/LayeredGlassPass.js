@@ -21,6 +21,7 @@ export class LayeredGlassPass extends Pass {
     this.resolutionScale = options.resolutionScale;
     this.coverageScale = options.coverageScale;
     this.coverageSamples = options.coverageSamples;
+    this.transmissionAntialias = options.transmissionAntialias;
     this.spectral = options.spectral;
     this.roughSamples = options.roughSamples;
     this.maxMedia = options.maxMedia;
@@ -79,6 +80,7 @@ export class LayeredGlassPass extends Pass {
       resolutionScale: this.resolutionScale,
       coverageScale: this.coverageScale,
       coverageSamples: this.coverageSamples,
+      transmissionAntialias: this.transmissionAntialias,
       spectral: this.spectral,
       roughSamples: this.roughSamples,
       maxMedia: this.maxMedia,
@@ -127,6 +129,9 @@ export class LayeredGlassPass extends Pass {
     if (this.coverageSamples != null) {
       composer.setCoverageSamples(this.coverageSamples);
     }
+    if (this.transmissionAntialias != null) {
+      composer.setTransmissionAntialias(this.transmissionAntialias);
+    }
 
     composer.render(this.scene, this.camera, {
       glassObjects: this.glassObjects ?? undefined,
@@ -161,6 +166,12 @@ export class LayeredGlassPass extends Pass {
   setCoverageSamples(value) {
     this.coverageSamples = value;
     this._composer?.setCoverageSamples(value);
+    return this;
+  }
+
+  setTransmissionAntialias(value) {
+    this.transmissionAntialias = Boolean(value);
+    this._composer?.setTransmissionAntialias(value);
     return this;
   }
 

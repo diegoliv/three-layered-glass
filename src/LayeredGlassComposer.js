@@ -129,6 +129,11 @@ export class LayeredGlassComposer {
     return this._bvh?.coverageSamples ?? this._options.coverageSamples ?? 0;
   }
 
+  get transmissionAntialias() {
+    return this._bvh?.transmissionAntialias
+      ?? Boolean(this._options.transmissionAntialias);
+  }
+
   _activeComposer() {
     return this.activeBackend === 'bvh' ? this._getBVH() : this._getAnalytic();
   }
@@ -282,6 +287,13 @@ export class LayeredGlassComposer {
     if (!Number.isFinite(nextValue)) return this;
     this._options.coverageSamples = nextValue;
     this._bvh?.setCoverageSamples(nextValue);
+    return this;
+  }
+
+  setTransmissionAntialias(value) {
+    const nextValue = Boolean(value);
+    this._options.transmissionAntialias = nextValue;
+    this._bvh?.setTransmissionAntialias(nextValue);
     return this;
   }
 

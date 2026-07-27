@@ -127,6 +127,8 @@ export interface LayeredGlassComposerOptions {
   coverageScale?: number;
   /** MSAA samples for the rasterized glass surface pass. Defaults to 0. */
   coverageSamples?: number;
+  /** FXAA for the scalable BVH transmission buffer. Defaults to false. */
+  transmissionAntialias?: boolean;
   spectral?: boolean;
   roughSamples?: number;
   maxMedia?: number;
@@ -270,6 +272,7 @@ export class LayeredGlassComposer {
   readonly resolutionScale: number;
   readonly coverageScale: number;
   readonly coverageSamples: number;
+  readonly transmissionAntialias: boolean;
   constructor(renderer: WebGLRenderer, options?: LayeredGlassComposerOptions);
   prepare(scene: Scene, options?: LayeredGlassPrepareOptions): Promise<this>;
   invalidateScene(): this;
@@ -297,6 +300,7 @@ export class LayeredGlassComposer {
   setResolutionScale(value: number): this;
   setCoverageScale(value: number): this;
   setCoverageSamples(value: number): this;
+  setTransmissionAntialias(value: boolean): this;
   render(scene: Scene, camera: Camera, options?: LayeredGlassRenderOptions): Texture;
   getMemoryReport(): LayeredGlassMemoryReport;
   dispose(): void;
@@ -318,6 +322,7 @@ export class BVHLayeredGlassComposer {
   resolutionScale: number;
   coverageScale: number;
   coverageSamples: number;
+  transmissionAntialias: boolean;
   constructor(renderer: WebGLRenderer, options?: LayeredGlassComposerOptions);
   prepare(scene: Scene, options?: LayeredGlassPrepareOptions): Promise<this>;
   invalidateScene(): this;
@@ -334,6 +339,7 @@ export class BVHLayeredGlassComposer {
   setResolutionScale(value: number): this;
   setCoverageScale(value: number): this;
   setCoverageSamples(value: number): this;
+  setTransmissionAntialias(value: boolean): this;
   render(scene: Scene, camera: Camera, options?: LayeredGlassRenderOptions): Texture;
   getMemoryReport(): LayeredGlassMemoryReport;
   dispose(): void;
@@ -410,6 +416,7 @@ export class LayeredGlassPass extends Pass {
   resolutionScale?: number;
   coverageScale?: number;
   coverageSamples?: number;
+  transmissionAntialias?: boolean;
   readonly composer: LayeredGlassComposer | null;
   readonly outputTexture: Texture | null;
   readonly depthTexture: Texture | null;
@@ -419,6 +426,7 @@ export class LayeredGlassPass extends Pass {
   setResolutionScale(value: number): this;
   setCoverageScale(value: number): this;
   setCoverageSamples(value: number): this;
+  setTransmissionAntialias(value: boolean): this;
   dispose(): void;
 }
 

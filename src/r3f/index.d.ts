@@ -55,6 +55,7 @@ export interface LayeredGlassComposerProps {
   resolutionScale?: number;
   coverageScale?: number;
   coverageSamples?: number;
+  transmissionAntialias?: boolean;
   spectral?: boolean;
   roughSamples?: number;
   maxMedia?: number;

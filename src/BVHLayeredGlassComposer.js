@@ -32,6 +32,7 @@ import {
   glassSurfaceFragmentShader,
   glassSurfaceVertexShader,
   roughTransmissionBlurFragmentShader,
+  transmissionFxaaFragmentShader,
 } from './shaders/passes.js';
 import {
   bvhResolverVertexShader,
@@ -334,6 +335,7 @@ export class BVHLayeredGlassComposer {
       renderer.capabilities.maxSamples ?? 0,
       Math.max(0, Math.floor(finiteNumber(options.coverageSamples, 0))),
     );
+    this.transmissionAntialias = Boolean(options.transmissionAntialias);
     this.maxTraversals = options.maxTraversals
       ?? this.quality.maxTraversals;
     this.colorType = options.colorType ?? (
@@ -410,6 +412,17 @@ export class BVHLayeredGlassComposer {
       vertexShader: fullscreenVertexShader,
       fragmentShader: copyFragmentShader,
       uniforms: { uTexture: { value: null } },
+      depthTest: false,
+      depthWrite: false,
+      blending: NoBlending,
+      toneMapped: false,
+    });
+    this._transmissionAntialiasMaterial = new ShaderMaterial({
+      name: 'LayeredGlassBVHTransmissionFXAA',
+      glslVersion: GLSL3,
+      vertexShader: fullscreenVertexShader,
+      fragmentShader: transmissionFxaaFragmentShader,
+      uniforms: { uSourceTexture: { value: null } },
       depthTest: false,
       depthWrite: false,
       blending: NoBlending,
@@ -720,6 +733,7 @@ export class BVHLayeredGlassComposer {
 
   _allocateRayTargets(width, height) {
     this._rayTarget?.dispose();
+    this._transmissionAntialiasTarget?.dispose();
     this._roughBlurHalfTarget?.dispose();
     this._roughBlurQuarterTarget?.dispose();
     this._roughBlurEighthTarget?.dispose();
@@ -747,6 +761,13 @@ export class BVHLayeredGlassComposer {
       depthBuffer: false,
       name: 'LayeredGlass.BVH.RayResolve',
     });
+    this._transmissionAntialiasTarget = this.transmissionAntialias
+      ? createTarget(resolveWidth, resolveHeight, {
+          type: this.colorType,
+          depthBuffer: false,
+          name: 'LayeredGlass.BVH.TransmissionFXAA',
+        })
+      : null;
     this._roughBlurHalfTarget = createTarget(halfWidth, halfHeight, {
       type: this.colorType,
       depthBuffer: false,
@@ -845,6 +866,14 @@ export class BVHLayeredGlassComposer {
     }
     this.coverageSamples = nextValue;
     this._allocateSurfaceTarget(this._size.x, this._size.y);
+    return this;
+  }
+
+  setTransmissionAntialias(value) {
+    const nextValue = Boolean(value);
+    if (nextValue === this.transmissionAntialias) return this;
+    this.transmissionAntialias = nextValue;
+    this._allocateRayTargets(this._size.x, this._size.y);
     return this;
   }
 
@@ -1155,7 +1184,16 @@ export class BVHLayeredGlassComposer {
         uniforms.uLayered.value = this.layered ? 1 : 0;
         this._renderFullscreen(this._resolverMaterial, this._rayTarget);
 
-        const transmissionTexture = this._rayTarget.texture;
+        let transmissionTexture = this._rayTarget.texture;
+        if (this.transmissionAntialias) {
+          this._transmissionAntialiasMaterial.uniforms.uSourceTexture.value
+            = transmissionTexture;
+          this._renderFullscreen(
+            this._transmissionAntialiasMaterial,
+            this._transmissionAntialiasTarget,
+          );
+          transmissionTexture = this._transmissionAntialiasTarget.texture;
+        }
         const hasRoughBlur = hasRoughTransmission(
           glassObjects,
           this.autoDiscover,
@@ -1251,6 +1289,7 @@ export class BVHLayeredGlassComposer {
     this.rayScene.dispose();
     this._baseTarget.dispose();
     this._rayTarget.dispose();
+    this._transmissionAntialiasTarget?.dispose();
     this._roughBlurHalfTarget.dispose();
     this._roughBlurQuarterTarget.dispose();
     this._roughBlurEighthTarget.dispose();
@@ -1259,6 +1298,7 @@ export class BVHLayeredGlassComposer {
     this._surfaceTarget.dispose();
     this._resolverMaterial.dispose();
     this._copyMaterial.dispose();
+    this._transmissionAntialiasMaterial.dispose();
     this._roughTransmissionBlurMaterial.dispose();
     this._compositeMaterial.dispose();
     this._displayMaterial.dispose();

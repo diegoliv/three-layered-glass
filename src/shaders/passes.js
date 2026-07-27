@@ -139,6 +139,120 @@ export const copyFragmentShader = /* glsl */ `
 `;
 
 
+export const transmissionFxaaFragmentShader = /* glsl */ `
+  precision highp float;
+
+  uniform sampler2D uSourceTexture;
+  in vec2 vUv;
+  out vec4 outColor;
+
+  float transmissionLuma(vec3 color) {
+    return dot(color, vec3(0.299, 0.587, 0.114));
+  }
+
+  vec3 validTransmissionSample(vec2 uv, vec3 centerColor) {
+    vec4 sampleColor = texture(uSourceTexture, uv);
+    return mix(
+      centerColor,
+      sampleColor.rgb,
+      step(0.005, sampleColor.a)
+    );
+  }
+
+  void main() {
+    vec4 centerSample = texture(uSourceTexture, vUv);
+    if (centerSample.a < 0.005) {
+      outColor = centerSample;
+      return;
+    }
+
+    vec2 texel = 1.0 / vec2(textureSize(uSourceTexture, 0));
+    vec3 rgbNorthWest = validTransmissionSample(
+      vUv + texel * vec2(-1.0, -1.0),
+      centerSample.rgb
+    );
+    vec3 rgbNorthEast = validTransmissionSample(
+      vUv + texel * vec2(1.0, -1.0),
+      centerSample.rgb
+    );
+    vec3 rgbSouthWest = validTransmissionSample(
+      vUv + texel * vec2(-1.0, 1.0),
+      centerSample.rgb
+    );
+    vec3 rgbSouthEast = validTransmissionSample(
+      vUv + texel * vec2(1.0, 1.0),
+      centerSample.rgb
+    );
+
+    float lumaCenter = transmissionLuma(centerSample.rgb);
+    float lumaNorthWest = transmissionLuma(rgbNorthWest);
+    float lumaNorthEast = transmissionLuma(rgbNorthEast);
+    float lumaSouthWest = transmissionLuma(rgbSouthWest);
+    float lumaSouthEast = transmissionLuma(rgbSouthEast);
+    float lumaMin = min(
+      lumaCenter,
+      min(
+        min(lumaNorthWest, lumaNorthEast),
+        min(lumaSouthWest, lumaSouthEast)
+      )
+    );
+    float lumaMax = max(
+      lumaCenter,
+      max(
+        max(lumaNorthWest, lumaNorthEast),
+        max(lumaSouthWest, lumaSouthEast)
+      )
+    );
+    float lumaRange = lumaMax - lumaMin;
+    if (lumaRange < max(0.0312, lumaMax * 0.125)) {
+      outColor = centerSample;
+      return;
+    }
+
+    vec2 direction;
+    direction.x = -(
+      (lumaNorthWest + lumaNorthEast)
+      - (lumaSouthWest + lumaSouthEast)
+    );
+    direction.y = (
+      (lumaNorthWest + lumaSouthWest)
+      - (lumaNorthEast + lumaSouthEast)
+    );
+    float directionReduce = max(
+      (lumaNorthWest + lumaNorthEast + lumaSouthWest + lumaSouthEast)
+        * (0.25 * 0.125),
+      1.0 / 128.0
+    );
+    float inverseDirection = 1.0 / (
+      min(abs(direction.x), abs(direction.y)) + directionReduce
+    );
+    direction = clamp(
+      direction * inverseDirection,
+      vec2(-8.0),
+      vec2(8.0)
+    ) * texel;
+
+    vec3 rgbA = 0.5 * (
+      validTransmissionSample(
+        vUv + direction * (1.0 / 3.0 - 0.5),
+        centerSample.rgb
+      )
+      + validTransmissionSample(
+        vUv + direction * (2.0 / 3.0 - 0.5),
+        centerSample.rgb
+      )
+    );
+    vec3 rgbB = rgbA * 0.5 + 0.25 * (
+      validTransmissionSample(vUv + direction * -0.5, centerSample.rgb)
+      + validTransmissionSample(vUv + direction * 0.5, centerSample.rgb)
+    );
+    float lumaB = transmissionLuma(rgbB);
+    vec3 filtered = (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
+    outColor = vec4(filtered, centerSample.a);
+  }
+`;
+
+
 export const roughTransmissionBlurFragmentShader = /* glsl */ `
   precision highp float;
 
