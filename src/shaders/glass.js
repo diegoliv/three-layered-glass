@@ -62,15 +62,19 @@ export const layeredGlassFragmentShader = /* glsl */ `
   vec3 sampleRoughTransmission(vec2 uv, float radius) {
     vec2 texel = 1.0 / uResolution;
     vec2 spread = texel * radius;
-    vec3 result = texture(uSourceTexture, uv).rgb * 0.20;
-    result += texture(uSourceTexture, uv + vec2( 0.95,  0.10) * spread).rgb * 0.10;
-    result += texture(uSourceTexture, uv + vec2(-0.82,  0.38) * spread).rgb * 0.10;
-    result += texture(uSourceTexture, uv + vec2( 0.45, -0.88) * spread).rgb * 0.10;
-    result += texture(uSourceTexture, uv + vec2(-0.24, -0.96) * spread).rgb * 0.10;
-    result += texture(uSourceTexture, uv + vec2( 0.58,  0.74) * spread).rgb * 0.10;
-    result += texture(uSourceTexture, uv + vec2(-0.92, -0.24) * spread).rgb * 0.10;
-    result += texture(uSourceTexture, uv + vec2( 0.08,  0.98) * spread).rgb * 0.10;
-    result += texture(uSourceTexture, uv + vec2(-0.56,  0.78) * spread).rgb * 0.10;
+    vec3 result = texture(uSourceTexture, uv).rgb * 0.04;
+    result += texture(uSourceTexture, uv + vec2( 0.26,  0.05) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2(-0.17,  0.24) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2(-0.25, -0.07) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2( 0.10, -0.27) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2( 0.51,  0.22) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2(-0.19,  0.55) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2(-0.53,  0.16) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2(-0.24, -0.51) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2( 0.91,  0.18) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2( 0.34,  0.94) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2(-0.88,  0.42) * spread).rgb * 0.08;
+    result += texture(uSourceTexture, uv + vec2(-0.39, -0.92) * spread).rgb * 0.08;
     return result;
   }
 
@@ -133,7 +137,7 @@ export const layeredGlassFragmentShader = /* glsl */ `
     );
 
     float opticalDistance = max(distance(entryPosition, exitPosition), 0.001);
-    float blurRadius = uRoughness * uRoughness * (44.0 + opticalDistance * 30.0);
+    float blurRadius = uRoughness * uRoughness * (110.0 + opticalDistance * 45.0);
     vec2 dispersionDirection = normalize(refractedUv - screenUv + vec2(1e-5));
     vec2 dispersionOffset = dispersionDirection * uDispersion * (0.35 + opticalDistance * 0.24);
 
@@ -141,7 +145,14 @@ export const layeredGlassFragmentShader = /* glsl */ `
     transmitted.r = sampleRoughTransmission(refractedUv + dispersionOffset, blurRadius).r;
     transmitted.g = sampleRoughTransmission(refractedUv, blurRadius).g;
     transmitted.b = sampleRoughTransmission(refractedUv - dispersionOffset, blurRadius).b;
+    float frostAmount = smoothstep(0.45, 1.0, uRoughness);
+    vec3 frostTint = mix(
+      vec3(1.0),
+      max(uAttenuationColor, vec3(0.001)),
+      0.28
+    );
 
+    transmitted = mix(transmitted, frostTint, frostAmount * 0.30);
     vec3 absorption = pow(
       max(uAttenuationColor, vec3(0.001)),
       vec3(opticalDistance / max(uAttenuationDistance, 0.001))

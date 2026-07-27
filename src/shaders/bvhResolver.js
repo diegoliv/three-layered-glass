@@ -51,7 +51,8 @@ export function createBVHResolverFragmentShader({
     uniform int uLayered;
 
     in vec2 vUv;
-    out vec4 outColor;
+    layout(location = 0) out vec4 outTransmission;
+    layout(location = 1) out vec4 outFrontSurface;
 
     struct SurfaceData {
       float kind;
@@ -131,15 +132,19 @@ export function createBVHResolverFragmentShader({
     vec3 sampleRoughBase(vec2 uv, float radius) {
       vec2 texel = 1.0 / uResolution;
       vec2 spread = texel * radius;
-      vec3 color = texture(uBaseColor, uv).rgb * 0.20;
-      color += texture(uBaseColor, uv + vec2( 0.95,  0.10) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.82,  0.38) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2( 0.45, -0.88) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.24, -0.96) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2( 0.58,  0.74) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.92, -0.24) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2( 0.08,  0.98) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.56,  0.78) * spread).rgb * 0.10;
+      vec3 color = texture(uBaseColor, uv).rgb * 0.04;
+      color += texture(uBaseColor, uv + vec2( 0.26,  0.05) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.17,  0.24) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.25, -0.07) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.10, -0.27) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.51,  0.22) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.19,  0.55) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.53,  0.16) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.24, -0.51) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.91,  0.18) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.34,  0.94) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.88,  0.42) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.39, -0.92) * spread).rgb * 0.08;
 
       #if ROUGH_SAMPLES > 1
         vec2 outerSpread = spread * 1.85;
@@ -323,6 +328,7 @@ export function createBVHResolverFragmentShader({
       vec2 screenUv,
       float spectralSign,
       out vec3 radiance,
+      out vec3 frontSurfaceRadiance,
       out bool touchedGlass,
       out float pathDispersion
     ) {
@@ -330,7 +336,10 @@ export function createBVHResolverFragmentShader({
       vec3 rayDirection = reconstructRayDirection(screenUv);
       vec3 throughput = vec3(1.0);
       vec3 reflectedRadiance = vec3(0.0);
+      frontSurfaceRadiance = vec3(0.0);
       vec3 layerRadiance = vec3(0.0);
+      float layerClarity = 1.0;
+      vec3 frostTint = vec3(1.0);
       float totalOpticalDistance = 0.0;
       float terminalReach = 2.0;
       float terminalRoughness = 0.0;
@@ -403,6 +412,10 @@ export function createBVHResolverFragmentShader({
         touchedGlass = true;
         pathDispersion = max(pathDispersion, surface.dispersion);
         terminalReach = surface.refractionReach;
+        frostTint = min(
+          frostTint,
+          mix(vec3(1.0), surface.attenuationColor, 0.28)
+        );
         terminalRoughness = max(terminalRoughness, surface.roughness);
 
         vec3 normal = normalize(surface.smoothNormal);
@@ -444,10 +457,16 @@ export function createBVHResolverFragmentShader({
           etaTransmitted
         );
         vec3 reflectedDirection = normalize(reflect(rayDirection, normal));
-        reflectedRadiance += throughput
+        vec3 reflectionContribution = throughput
+          * layerClarity
           * fresnel
           * surface.reflectionStrength
           * environmentColor(reflectedDirection, surface.roughness);
+        if (traversal == 0) {
+          frontSurfaceRadiance += reflectionContribution;
+        } else {
+          reflectedRadiance += reflectionContribution;
+        }
 
         vec3 nextDirection = refract(
           rayDirection,
@@ -463,9 +482,12 @@ export function createBVHResolverFragmentShader({
         nextDirection = normalize(nextDirection);
         throughput *= 1.0 - fresnel;
         layerRadiance += throughput
+          * layerClarity
           * surface.attenuationColor
           * surface.bodyTintStrength
           * 0.008;
+        layerClarity *= exp(
+          -surface.roughness * surface.roughness * 12.0);
 
         if (surface.mode == 1) {
           vec3 thinExit = hitPosition
@@ -529,9 +551,11 @@ export function createBVHResolverFragmentShader({
           vec2(0.997)
         );
         float blurRadius = terminalRoughness * terminalRoughness
-          * (54.0 + totalOpticalDistance * 42.0);
+          * (130.0 + totalOpticalDistance * 64.0);
         transmitted = sampleRoughBase(terminalUv, blurRadius);
       }
+      float frostAmount = smoothstep(0.45, 1.0, terminalRoughness);
+      transmitted = mix(transmitted, frostTint, frostAmount * 0.30);
 
       radiance = reflectedRadiance + layerRadiance + transmitted * throughput;
     }
@@ -539,9 +563,11 @@ export function createBVHResolverFragmentShader({
     vec3 traceSpectralPath(
       vec2 screenUv,
       float spectralSign,
+      out vec3 frontSurfaceRadiance,
       out float dispersionAmount
     ) {
       vec3 sampleRadiance;
+      vec3 sampleFrontSurfaceRadiance;
       bool touchedGlass;
       float sampleDispersion;
 
@@ -549,9 +575,11 @@ export function createBVHResolverFragmentShader({
         screenUv,
         spectralSign,
         sampleRadiance,
+        sampleFrontSurfaceRadiance,
         touchedGlass,
         sampleDispersion
       );
+      frontSurfaceRadiance = sampleFrontSurfaceRadiance;
       dispersionAmount = sampleDispersion;
       return sampleRadiance;
     }
@@ -561,7 +589,8 @@ export function createBVHResolverFragmentShader({
       vec3 baseColor = texture(uBaseColor, screenUv).rgb;
 
       if (texture(uCoverage, screenUv).r < 0.01) {
-        outColor = vec4(baseColor, 1.0);
+        outTransmission = vec4(baseColor, 0.0);
+        outFrontSurface = vec4(0.0);
         return;
       }
 
@@ -581,7 +610,8 @@ export function createBVHResolverFragmentShader({
         firstDistance
       );
       if (!firstHit) {
-        outColor = vec4(baseColor, 1.0);
+        outTransmission = vec4(baseColor, 0.0);
+        outFrontSurface = vec4(0.0);
         return;
       }
 
@@ -589,10 +619,14 @@ export function createBVHResolverFragmentShader({
         firstBarycoord,
         firstIndices.xyz
       );
+      float firstRoughnessAlpha = firstSurface.kind > 0.5
+        ? 0.01 + clamp(firstSurface.roughness, 0.0, 1.0) * 0.99
+        : 0.0;
       vec3 firstPosition = uCameraPosition
         + primaryDirection * firstDistance;
       if (opaqueBeforePosition(firstPosition)) {
-        outColor = vec4(baseColor, 1.0);
+        outTransmission = vec4(baseColor, 0.0);
+        outFrontSurface = vec4(0.0);
         return;
       }
 
@@ -600,47 +634,70 @@ export function createBVHResolverFragmentShader({
         float redDispersion;
         float greenDispersion;
         float blueDispersion;
-        vec3 redRadiance = traceSpectralPath(
+        vec3 redFrontSurface;
+        vec3 greenFrontSurface;
+        vec3 blueFrontSurface;
+        vec3 redTransmission = traceSpectralPath(
           screenUv,
           -1.0,
+          redFrontSurface,
           redDispersion
         );
-        vec3 greenRadiance = traceSpectralPath(
+        vec3 greenTransmission = traceSpectralPath(
           screenUv,
           0.0,
+          greenFrontSurface,
           greenDispersion
         );
-        vec3 blueRadiance = traceSpectralPath(
+        vec3 blueTransmission = traceSpectralPath(
           screenUv,
           1.0,
+          blueFrontSurface,
           blueDispersion
         );
-        vec3 averaged = (redRadiance + greenRadiance + blueRadiance) / 3.0;
-        vec3 spectralColor = vec3(
-          redRadiance.r,
-          greenRadiance.g,
-          blueRadiance.b
+        float dispersionMix = smoothstep(
+          0.0005,
+          0.012,
+          max(redDispersion, max(greenDispersion, blueDispersion))
         );
-        outColor = vec4(
-          mix(
-            averaged,
-            spectralColor,
-            smoothstep(
-              0.0005,
-              0.012,
-              max(redDispersion, max(greenDispersion, blueDispersion))
-            )
-          ),
+        vec3 averagedTransmission = (
+          redTransmission + greenTransmission + blueTransmission
+        ) / 3.0;
+        vec3 spectralTransmission = vec3(
+          redTransmission.r,
+          greenTransmission.g,
+          blueTransmission.b
+        );
+        vec3 averagedFrontSurface = (
+          redFrontSurface + greenFrontSurface + blueFrontSurface
+        ) / 3.0;
+        vec3 spectralFrontSurface = vec3(
+          redFrontSurface.r,
+          greenFrontSurface.g,
+          blueFrontSurface.b
+        );
+        outTransmission = vec4(
+          mix(averagedTransmission, spectralTransmission, dispersionMix),
+          firstRoughnessAlpha
+        );
+        outFrontSurface = vec4(
+          mix(averagedFrontSurface, spectralFrontSurface, dispersionMix),
           1.0
         );
       #else
         float pathDispersion;
-        vec3 radiance = traceSpectralPath(
+        vec3 frontSurfaceRadiance;
+        vec3 transmissionRadiance = traceSpectralPath(
           screenUv,
           0.0,
+          frontSurfaceRadiance,
           pathDispersion
         );
-        outColor = vec4(radiance, 1.0);
+        outTransmission = vec4(
+          transmissionRadiance,
+          firstRoughnessAlpha
+        );
+        outFrontSurface = vec4(frontSurfaceRadiance, 1.0);
       #endif
     }
   `;

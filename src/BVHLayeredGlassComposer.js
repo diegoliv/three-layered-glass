@@ -29,6 +29,7 @@ import {
   copyFragmentShader,
   coverageCompositeFragmentShader,
   fullscreenVertexShader,
+  roughTransmissionBlurFragmentShader,
 } from './shaders/passes.js';
 import {
   bvhResolverVertexShader,
@@ -65,14 +66,20 @@ function createTarget(width, height, options = {}) {
     depthBuffer: options.depthBuffer ?? true,
     stencilBuffer: false,
     generateMipmaps: false,
+    count: options.count ?? 1,
   });
-  target.texture.name = options.name ?? 'LayeredGlass.Target';
-  target.texture.colorSpace = NoColorSpace;
+  const targetName = options.name ?? 'LayeredGlass.Target';
+  target.textures.forEach((texture, index) => {
+    texture.name = target.textures.length > 1
+      ? `${targetName}.${index}`
+      : targetName;
+    texture.colorSpace = NoColorSpace;
+  });
   if (options.depthTexture) {
     target.depthTexture = createDepthTexture(
       width,
       height,
-      `${target.texture.name}.Depth`,
+      `${targetName}.Depth`,
     );
   }
   return target;
@@ -96,6 +103,15 @@ function isGlassObject(object, autoDiscoverGlass = true) {
   return asMaterialArray(object.material).some(
     (material) => isGlassSurface(object, material, autoDiscoverGlass),
   );
+}
+
+function hasRoughTransmission(objects, autoDiscoverGlass = true) {
+  return objects.some((object) => asMaterialArray(object.material).some(
+    (material) => (
+      isGlassSurface(object, material, autoDiscoverGlass)
+      && Number(material?.roughness ?? 0) > 0.35
+    ),
+  ));
 }
 
 function isRenderableObject(object) {
@@ -368,6 +384,20 @@ export class BVHLayeredGlassComposer {
       blending: NoBlending,
       toneMapped: false,
     });
+    this._roughTransmissionBlurMaterial = new ShaderMaterial({
+      name: 'LayeredGlassBVHRoughTransmissionBlur',
+      glslVersion: GLSL3,
+      vertexShader: fullscreenVertexShader,
+      fragmentShader: roughTransmissionBlurFragmentShader,
+      uniforms: {
+        uSourceTexture: { value: null },
+        uOffset: { value: 1.0 },
+      },
+      depthTest: false,
+      depthWrite: false,
+      blending: NoBlending,
+      toneMapped: false,
+    });
     this._compositeMaterial = new ShaderMaterial({
       name: 'LayeredGlassBVHComposite',
       glslVersion: GLSL3,
@@ -376,6 +406,8 @@ export class BVHLayeredGlassComposer {
       uniforms: {
         uBaseTexture: { value: null },
         uRayTexture: { value: null },
+        uBlurTexture: { value: null },
+        uFrontTexture: { value: null },
         uCoverageTexture: { value: null },
       },
       depthTest: false,
@@ -628,6 +660,10 @@ export class BVHLayeredGlassComposer {
   _allocateTargets(width, height) {
     this._baseTarget?.dispose();
     this._rayTarget?.dispose();
+    this._roughBlurHalfTarget?.dispose();
+    this._roughBlurQuarterTarget?.dispose();
+    this._roughBlurEighthTarget?.dispose();
+    this._roughBlurOutputTarget?.dispose();
     this._resolveTarget?.dispose();
     this._coverageTarget?.dispose();
 
@@ -647,9 +683,46 @@ export class BVHLayeredGlassComposer {
     );
     this._resolveSize.set(resolveWidth, resolveHeight);
 
+    const halfWidth = Math.max(1, Math.ceil(resolveWidth * 0.5));
+    const halfHeight = Math.max(1, Math.ceil(resolveHeight * 0.5));
+    const quarterWidth = Math.max(1, Math.ceil(resolveWidth * 0.25));
+    const quarterHeight = Math.max(1, Math.ceil(resolveHeight * 0.25));
+    const eighthWidth = Math.max(1, Math.ceil(resolveWidth * 0.125));
+    const eighthHeight = Math.max(1, Math.ceil(resolveHeight * 0.125));
+
     this._rayTarget = createTarget(resolveWidth, resolveHeight, {
       type: this.colorType,
+      count: 2,
+      depthBuffer: false,
       name: 'LayeredGlass.BVH.RayResolve',
+    });
+    this._roughBlurHalfTarget = createTarget(halfWidth, halfHeight, {
+      type: this.colorType,
+      depthBuffer: false,
+      name: 'LayeredGlass.BVH.RoughBlurHalf',
+    });
+    this._roughBlurQuarterTarget = createTarget(
+      quarterWidth,
+      quarterHeight,
+      {
+        type: this.colorType,
+        depthBuffer: false,
+        name: 'LayeredGlass.BVH.RoughBlurQuarter',
+      },
+    );
+    this._roughBlurEighthTarget = createTarget(
+      eighthWidth,
+      eighthHeight,
+      {
+        type: this.colorType,
+        depthBuffer: false,
+        name: 'LayeredGlass.BVH.RoughBlurEighth',
+      },
+    );
+    this._roughBlurOutputTarget = createTarget(resolveWidth, resolveHeight, {
+      type: this.colorType,
+      depthBuffer: false,
+      name: 'LayeredGlass.BVH.RoughBlurOutput',
     });
     this._coverageTarget = createTarget(resolveWidth, resolveHeight, {
       type: UnsignedByteType,
@@ -807,6 +880,13 @@ export class BVHLayeredGlassComposer {
     this.renderer.render(this._fullscreenScene, this._fullscreenCamera);
   }
 
+  _renderRoughTransmissionBlur(sourceTexture, target, offset) {
+    const uniforms = this._roughTransmissionBlurMaterial.uniforms;
+    uniforms.uSourceTexture.value = sourceTexture;
+    uniforms.uOffset.value = offset;
+    this._renderFullscreen(this._roughTransmissionBlurMaterial, target);
+  }
+
   _renderCoverage(scene, camera, glassObjects) {
     const state = this._applyCoverageFilter(scene, glassObjects);
     const previousOverride = scene.overrideMaterial;
@@ -944,9 +1024,47 @@ export class BVHLayeredGlassComposer {
         uniforms.uLayered.value = this.layered ? 1 : 0;
         this._renderFullscreen(this._resolverMaterial, this._rayTarget);
 
+        const transmissionTexture = this._rayTarget.textures[0];
+        let blurredTransmissionTexture = transmissionTexture;
+        if (hasRoughTransmission(glassObjects, this.autoDiscover)) {
+          this._renderRoughTransmissionBlur(
+            transmissionTexture,
+            this._roughBlurHalfTarget,
+            0.75,
+          );
+          this._renderRoughTransmissionBlur(
+            this._roughBlurHalfTarget.texture,
+            this._roughBlurQuarterTarget,
+            0.9,
+          );
+          this._renderRoughTransmissionBlur(
+            this._roughBlurQuarterTarget.texture,
+            this._roughBlurEighthTarget,
+            1.0,
+          );
+          this._renderRoughTransmissionBlur(
+            this._roughBlurEighthTarget.texture,
+            this._roughBlurQuarterTarget,
+            1.35,
+          );
+          this._renderRoughTransmissionBlur(
+            this._roughBlurQuarterTarget.texture,
+            this._roughBlurHalfTarget,
+            1.05,
+          );
+          this._renderRoughTransmissionBlur(
+            this._roughBlurHalfTarget.texture,
+            this._roughBlurOutputTarget,
+            0.8,
+          );
+          blurredTransmissionTexture = this._roughBlurOutputTarget.texture;
+        }
+
         const compositeUniforms = this._compositeMaterial.uniforms;
         compositeUniforms.uBaseTexture.value = this._baseTarget.texture;
-        compositeUniforms.uRayTexture.value = this._rayTarget.texture;
+        compositeUniforms.uRayTexture.value = transmissionTexture;
+        compositeUniforms.uBlurTexture.value = blurredTransmissionTexture;
+        compositeUniforms.uFrontTexture.value = this._rayTarget.textures[1];
         compositeUniforms.uCoverageTexture.value = this._coverageTarget.texture;
         this._renderFullscreen(this._compositeMaterial, this._resolveTarget);
       } else {
@@ -998,10 +1116,15 @@ export class BVHLayeredGlassComposer {
     this.rayScene.dispose();
     this._baseTarget.dispose();
     this._rayTarget.dispose();
+    this._roughBlurHalfTarget.dispose();
+    this._roughBlurQuarterTarget.dispose();
+    this._roughBlurEighthTarget.dispose();
+    this._roughBlurOutputTarget.dispose();
     this._resolveTarget.dispose();
     this._coverageTarget.dispose();
     this._resolverMaterial.dispose();
     this._copyMaterial.dispose();
+    this._roughTransmissionBlurMaterial.dispose();
     this._compositeMaterial.dispose();
     this._displayMaterial.dispose();
     this._coverageMaterial.dispose();

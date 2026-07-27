@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
@@ -7,6 +8,10 @@ import {
 } from '../src/index.js';
 import { createBVHResolverFragmentShader } from '../src/shaders/bvhResolver.js';
 import { createVolumeResolverFragmentShader } from '../src/shaders/volumeResolver.js';
+import {
+  coverageCompositeFragmentShader,
+  roughTransmissionBlurFragmentShader,
+} from '../src/shaders/passes.js';
 
 test('LayeredGlassMaterial separates optical data from optional analytic proxies', () => {
   const material = new LayeredGlassMaterial({
@@ -39,6 +44,11 @@ test('LayeredGlassMaterial separates optical data from optional analytic proxies
 test('rough transmission keeps the geometric interface normals stable', () => {
   const bvhShader = createBVHResolverFragmentShader({ roughSamples: 2 });
   const analyticShader = createVolumeResolverFragmentShader();
+  const composerSource = readFileSync(
+    new URL('../src/BVHLayeredGlassComposer.js', import.meta.url),
+    'utf8',
+  );
+  const demoHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
   for (const shader of [bvhShader, analyticShader]) {
     assert.doesNotMatch(shader, /perturbNormal|microEntryNormal|microExitNormal/);
@@ -49,6 +59,42 @@ test('rough transmission keeps the geometric interface normals stable', () => {
     /terminalRoughness \* terminalRoughness/,
   );
   assert.match(bvhShader, /#if ROUGH_SAMPLES > 1/);
+  assert.match(bvhShader, /float layerClarity = 1\.0/);
+  assert.match(bvhShader, /layerClarity \*= exp/);
+  assert.match(
+    bvhShader,
+    /surface\.roughness \* surface\.roughness \* 12\.0/,
+  );
+  assert.match(bvhShader, /smoothstep\(0\.45, 1\.0, terminalRoughness\)/);
+  assert.match(bvhShader, /firstRoughnessAlpha/);
+  assert.match(
+    bvhShader,
+    /layout\(location = 1\) out vec4 outFrontSurface/,
+  );
+  assert.match(bvhShader, /frontSurfaceRadiance/);
+  assert.match(roughTransmissionBlurFragmentShader, /uOffset/);
+  assert.match(
+    roughTransmissionBlurFragmentShader,
+    /textureSize\(uSourceTexture, 0\)/,
+  );
+  assert.match(roughTransmissionBlurFragmentShader, /vec2 diagonal/);
+  assert.match(roughTransmissionBlurFragmentShader, /vec2 axial/);
+  assert.match(roughTransmissionBlurFragmentShader, /supportAlpha/);
+  assert.doesNotMatch(roughTransmissionBlurFragmentShader, /uDirection/);
+  assert.match(coverageCompositeFragmentShader, /uBlurTexture/);
+  assert.match(coverageCompositeFragmentShader, /uFrontTexture/);
+  assert.match(coverageCompositeFragmentShader, /blurAmount/);
+  assert.doesNotMatch(coverageCompositeFragmentShader, /filterRoughRay/);
+  assert.match(composerSource, /RoughBlurEighth/);
+  assert.equal(
+    composerSource.match(/_renderRoughTransmissionBlur\(/g)?.length,
+    7,
+  );
+  assert.match(bvhShader, /frostAmount \* 0\.30/);
+  assert.match(analyticShader, /float layerClarity = 1\.0/);
+  assert.match(analyticShader, /roughScatter \* 12\.0/);
+  assert.match(analyticShader, /frostAmount \* 0\.30/);
+  assert.match(demoHtml, /id="roughness"[^>]*max="1"/);
   assert.match(
     analyticShader,
     /roughnessIntegral \+= roughScatter/,

@@ -466,15 +466,19 @@ export function createVolumeResolverFragmentShader({
     vec3 sampleRoughBase(vec2 uv, float radius) {
       vec2 texel = 1.0 / uResolution;
       vec2 spread = texel * radius;
-      vec3 color = texture(uBaseColor, uv).rgb * 0.20;
-      color += texture(uBaseColor, uv + vec2( 0.95,  0.10) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.82,  0.38) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2( 0.45, -0.88) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.24, -0.96) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2( 0.58,  0.74) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.92, -0.24) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2( 0.08,  0.98) * spread).rgb * 0.10;
-      color += texture(uBaseColor, uv + vec2(-0.56,  0.78) * spread).rgb * 0.10;
+      vec3 color = texture(uBaseColor, uv).rgb * 0.04;
+      color += texture(uBaseColor, uv + vec2( 0.26,  0.05) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.17,  0.24) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.25, -0.07) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.10, -0.27) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.51,  0.22) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.19,  0.55) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.53,  0.16) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.24, -0.51) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.91,  0.18) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2( 0.34,  0.94) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.88,  0.42) * spread).rgb * 0.08;
+      color += texture(uBaseColor, uv + vec2(-0.39, -0.92) * spread).rgb * 0.08;
       return color;
     }
 
@@ -492,6 +496,8 @@ export function createVolumeResolverFragmentShader({
       vec3 bodyTintRadiance = vec3(0.0);
       float totalOpticalDistance = 0.0;
       float roughnessIntegral = 0.0;
+      float layerClarity = 1.0;
+      vec3 frostTint = vec3(1.0);
       float terminalReach = 2.0;
       bool stoppedAtBlocker = false;
       vec2 blockerUv = screenUv;
@@ -533,6 +539,10 @@ export function createVolumeResolverFragmentShader({
         float attenuationDistance = max(opticalA.z, 0.001);
         float reflectionStrength = opticalA.w;
         vec3 attenuationColor = max(opticalB.rgb, vec3(0.001));
+        frostTint = min(
+          frostTint,
+          mix(vec3(1.0), attenuationColor, 0.28)
+        );
         terminalReach = max(meta.z, 0.01);
 
         touchedGlass = true;
@@ -547,6 +557,7 @@ export function createVolumeResolverFragmentShader({
         float entryFresnel = fresnelSchlick(entryCosine, 1.0, ior);
         vec3 reflectedDirection = reflect(rayDirection, entryNormal);
         reflectedRadiance += throughput
+          * layerClarity
           * entryFresnel
           * environmentColor(reflectedDirection, roughness)
           * reflectionStrength;
@@ -558,6 +569,7 @@ export function createVolumeResolverFragmentShader({
         );
         if (dot(insideDirection, insideDirection) < 1e-7) {
           reflectedRadiance += throughput
+            * layerClarity
             * environmentColor(reflectedDirection, roughness);
           throughput = vec3(0.0);
           break;
@@ -588,6 +600,7 @@ export function createVolumeResolverFragmentShader({
         );
         if (dot(outsideDirection, outsideDirection) < 1e-7) {
           reflectedRadiance += throughput
+            * layerClarity
             * environmentColor(
               reflect(insideDirection, interfaceExitNormal),
               roughness
@@ -612,12 +625,14 @@ export function createVolumeResolverFragmentShader({
           * (1.0 - exitFresnel);
         float roughScatter = roughness * roughness;
         layerRadiance += throughput
+          * layerClarity
           * attenuationColor
           * edgeFactor * 0.035
           * transmissionWeight
           * meta.w;
 
         bodyTintRadiance += throughput
+          * layerClarity
           * attenuationColor
           * (0.012 + opticalDistance * 0.0025)
           * meta.w;
@@ -625,6 +640,7 @@ export function createVolumeResolverFragmentShader({
         throughput *= transmissionWeight * absorption;
         totalOpticalDistance += opticalDistance;
         roughnessIntegral += roughScatter * (1.0 + opticalDistance);
+        layerClarity *= exp(-roughScatter * 12.0);
         rayOrigin = exitPosition + outsideDirection * EPSILON;
         rayDirection = outsideDirection;
         lastVolume = volumeIndex;
@@ -653,8 +669,14 @@ export function createVolumeResolverFragmentShader({
       }
 
       float blurRadius = roughnessIntegral
-        * (48.0 + totalOpticalDistance * 18.0);
+        * (115.0 + totalOpticalDistance * 40.0);
       vec3 transmitted = sampleRoughBase(terminalUv, blurRadius);
+      float frostAmount = smoothstep(
+        0.20,
+        1.0,
+        clamp(roughnessIntegral, 0.0, 1.0)
+      );
+      transmitted = mix(transmitted, frostTint, frostAmount * 0.30);
       radiance = reflectedRadiance
         + layerRadiance
         + bodyTintRadiance
