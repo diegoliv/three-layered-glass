@@ -68,6 +68,16 @@ export default function App() {
 
 That is the complete default setup. The compositor discovers the glass and opaque meshes, prepares the static ray scene in a worker when available, owns the R3F render step, and disposes its GPU resources when unmounted.
 
+The published demo is also a complete R3F reference implementation. Its
+[scene source](./demo/main.jsx) loads the Draco-compressed
+[object library](./static/objects.glb), normalizes each mesh, and places the
+real GLB geometry into the same layered queue used by the procedural panels.
+The **Object scale** control recalculates each mesh's conservative footprint
+and maintains a fixed world-space gap, so objects overlap visually through the
+glass without their geometry intersecting. Run `npm run dev`, then use
+**Geometry source** to switch between the two.
+
+
 For devices with different performance budgets, enable adaptive transmission resolution:
 
 ```jsx
