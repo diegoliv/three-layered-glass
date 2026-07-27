@@ -2,11 +2,14 @@
 
 Contributions are welcome through focused issues and pull requests.
 
+Use Node.js 20.19 or newer.
+
 Before opening a pull request:
 
 ```bash
-npm install
+npm ci
 npm run check
+npm run typecheck
 npm test
 npm run build:demo
 ```

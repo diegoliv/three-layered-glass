@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import {
-  LayeredGlassAdaptiveQuality,
-  LayeredGlassComposer,
   LayeredGlassMaterial,
   supportsLayeredGlass,
 } from '../src/index.js';
+import {
+  LayeredGlassAdaptiveQuality,
+  LayeredGlassComposer,
+} from '../src/advanced.js';
 
 const MAX_PANELS = 12;
 const PANEL_WIDTH = 2.55;
@@ -63,7 +65,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.domElement.setAttribute(
   'aria-label',
   'Per-pixel triangle-BVH layered glass panel demo',
@@ -404,7 +406,7 @@ function rebuildPanels({ resetCamera = true } = {}) {
 }
 
 async function loadHdrEnvironment(urls) {
-  const loader = new RGBELoader();
+  const loader = new HDRLoader();
   for (const url of urls) {
     try {
       const texture = await loader.loadAsync(url);

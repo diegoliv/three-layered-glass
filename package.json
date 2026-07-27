@@ -1,7 +1,7 @@
 {
   "name": "three-layered-glass",
-  "version": "0.4.0",
-  "description": "Automatic per-pixel layered glass for Three.js and React Three Fiber with analytic and static triangle-BVH backends.",
+  "version": "1.0.0",
+  "description": "Layer-aware glass for Three.js and React Three Fiber using real static mesh geometry and automatic opaque intersections.",
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.js",
@@ -13,10 +13,40 @@
       "import": "./src/index.js",
       "default": "./src/index.js"
     },
+    "./advanced": {
+      "types": "./src/advanced.d.ts",
+      "import": "./src/advanced.js",
+      "default": "./src/advanced.js"
+    },
+    "./legacy": {
+      "types": "./src/legacy.d.ts",
+      "import": "./src/legacy.js",
+      "default": "./src/legacy.js"
+    },
+    "./postprocessing": {
+      "types": "./src/postprocessing.d.ts",
+      "import": "./src/postprocessing.js",
+      "default": "./src/postprocessing.js"
+    },
     "./r3f": {
       "types": "./src/r3f/index.d.ts",
       "import": "./src/r3f/index.js",
       "default": "./src/r3f/index.js"
+    },
+    "./r3f/advanced": {
+      "types": "./src/r3f/advanced.d.ts",
+      "import": "./src/r3f/advanced.js",
+      "default": "./src/r3f/advanced.js"
+    },
+    "./r3f/legacy": {
+      "types": "./src/r3f/legacy.d.ts",
+      "import": "./src/r3f/legacy.js",
+      "default": "./src/r3f/legacy.js"
+    },
+    "./r3f/postprocessing": {
+      "types": "./src/r3f/postprocessing.d.ts",
+      "import": "./src/r3f/postprocessing.js",
+      "default": "./src/r3f/postprocessing.js"
     },
     "./package.json": "./package.json"
   },
@@ -24,10 +54,7 @@
     "src",
     "README.md",
     "CHANGELOG.md",
-    "docs/0.4.0-migration.md",
-    "docs/0.4.0-architecture.md",
-    "docs/0.3.0-migration.md",
-    "docs/0.2-vs-0.3-analysis.md",
+    "docs",
     "LICENSE"
   ],
   "scripts": {
@@ -36,7 +63,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --test",
     "check": "node scripts/check.mjs",
-    "prepublishOnly": "npm run check && npm test"
+    "typecheck": "tsc -p test/tsconfig.json",
+    "prepublishOnly": "npm run check && npm run typecheck && npm test"
   },
   "keywords": [
     "three",
@@ -69,21 +97,23 @@
   },
   "homepage": "https://diegoliv.github.io/three-layered-glass/",
   "peerDependencies": {
-    "three": ">=0.163.0 <1",
+    "@react-three/fiber": ">=8 <10",
     "react": ">=18 <20",
-    "@react-three/fiber": ">=8 <10"
+    "three": ">=0.163.0 <1"
   },
   "devDependencies": {
     "@react-three/fiber": "^9.6.1",
+    "@react-three/test-renderer": "^9.1.0",
     "@types/react": "^19.2.0",
     "@types/three": "^0.185.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "three": "^0.185.1",
+    "typescript": "^7.0.2",
     "vite": "^7.0.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19"
   },
   "peerDependenciesMeta": {
     "react": {

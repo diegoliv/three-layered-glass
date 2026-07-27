@@ -2,10 +2,8 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {
-  LayeredGlassMaterial,
-  sortGlassObjectsBackToFront,
-} from '../src/index.js';
+import { LayeredGlassMaterial } from '../src/index.js';
+import { sortGlassObjectsBackToFront } from '../src/legacy.js';
 import { createBVHResolverFragmentShader } from '../src/shaders/bvhResolver.js';
 import { createVolumeResolverFragmentShader } from '../src/shaders/volumeResolver.js';
 import {

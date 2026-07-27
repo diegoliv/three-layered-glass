@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 - 2026-07-27
+
+### Simplified public API
+
+- Reduced the primary Three.js entrypoint to `LayeredGlassComposer`, `LayeredGlassMaterial`, and `supportsLayeredGlass`.
+- Added dedicated `/advanced`, `/postprocessing`, and `/legacy` subpaths.
+- Reduced the primary R3F entrypoint to the common declarative material/composer path and moved integration controls to matching subpaths.
+- Preserved the 0.2/0.3 implementations behind explicit legacy imports.
+
+### React Three Fiber lifecycle
+
+- Added a self-closing composer setup as the recommended scene integration.
+- Added `useLayeredGlass()` preparation state with `preparing`, `ready`, and `error` statuses.
+- Added `onError` and the `adaptive` quality prop.
+- Invalidated render-on-demand canvases after asynchronous preparation or failure.
+- Prevented callback identity changes from rebuilding the static BVH.
+- Expanded material typing with a safe standard R3F shader-material prop surface.
+- Added official React Three Test Renderer coverage for exports, reactive materials, disposal, status, and callback stability.
+
+### Documentation and packaging
+
+- Rewrote the README around minimal R3F and Three.js quick starts.
+- Added focused Three.js API, R3F, performance, and 1.0 migration guides.
+- Fixed release checks on early Node 20 versions by replacing `import.meta.dirname`.
+- Added package-export validation for every 1.0 subpath.
 
 ### Rendering quality and performance
 

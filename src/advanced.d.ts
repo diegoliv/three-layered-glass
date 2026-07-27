@@ -1,0 +1,30 @@
+export {
+  AnalyticLayeredGlassComposer,
+  BVHLayeredGlassComposer,
+  GLASS_MODE,
+  LayeredGlassAdaptiveQuality,
+  LayeredGlassComposer,
+  LayeredGlassMaterial,
+  LayeredRayScene,
+  QUALITY_PRESETS,
+  RAY_SURFACE_KIND,
+  RAY_VISIBILITY,
+  RaySceneBuilder,
+  resolveLayeredGlassQuality,
+  supportsLayeredGlassFloatTargets,
+} from './core.js';
+
+export type {
+  LayeredGlassAdaptiveQualityOptions,
+  LayeredGlassBackend,
+  LayeredGlassComposerOptions,
+  LayeredGlassMaterialParameters,
+  LayeredGlassMemoryReport,
+  LayeredGlassObjectRecord,
+  LayeredGlassQualityName,
+  LayeredGlassQualityOptions,
+  LayeredGlassRaySceneBuildResult,
+  LayeredGlassRaySceneOptions,
+  LayeredGlassResolutionController,
+  LayeredGlassTriangleSource,
+} from './core.js';

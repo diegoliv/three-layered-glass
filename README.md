@@ -1,32 +1,112 @@
 # three-layered-glass
 
-Deterministic layered refraction for Three.js and React Three Fiber.
+Layer-aware glass for Three.js and React Three Fiber. It traces the real triangles of static `BufferGeometry` and GLB meshes, so multiple glass volumes and opaque objects refract in the correct order.
 
-Version 0.4 adds a static triangle-BVH backend that traces the real triangles of `BufferGeometry` and GLB meshes. Visible opaque meshes participate automatically, so ordinary objects can occlude and appear behind refracted glass without blocker registration or analytic shape declarations.
+- Real mesh silhouettes; no box or sphere proxy is required.
+- Opaque meshes participate automatically.
+- One shared compositor for every glass object.
+- Quality presets and optional adaptive transmission resolution.
+- First-class Three.js, R3F, and `EffectComposer` APIs.
 
 ## Install
+
+Three.js:
 
 ```bash
 npm install three-layered-glass three
 ```
 
-The BVH backend uses [`three-mesh-bvh`](https://github.com/gkjohnson/three-mesh-bvh), installed as a package dependency.
-
-React Three Fiber is optional:
+React Three Fiber:
 
 ```bash
 npm install three-layered-glass three react @react-three/fiber
 ```
 
-## Requirements
+Use R3F 8 with React 18, or R3F 9 with React 19.
 
-- Three.js `WebGLRenderer`
-- WebGL2
-- Static `BufferGeometry` for the 0.4 BVH backend
+## React Three Fiber
 
-Floating-point render targets improve HDR range but are not mandatory. The color compositor can fall back to unsigned-byte targets.
+Add one composer to the scene and use `LayeredGlassMaterial` like any other material:
 
-## Quick start
+```jsx
+import { Canvas } from '@react-three/fiber';
+import {
+  LayeredGlassComposer,
+  LayeredGlassMaterial,
+} from 'three-layered-glass/r3f';
+
+function Experience() {
+  return (
+    <>
+      <LayeredGlassComposer />
+
+      <mesh>
+        <torusKnotGeometry args={[1, 0.28, 180, 32]} />
+        <LayeredGlassMaterial
+          roughness={0.05}
+          attenuationColor="#8bcfff"
+        />
+      </mesh>
+
+      {/* Ordinary opaque meshes are included automatically. */}
+      <mesh position={[0, 0, -2]}>
+        <boxGeometry args={[2, 2, 0.25]} />
+        <meshStandardMaterial color="#ff8b74" />
+      </mesh>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <Canvas camera={{ position: [0, 0, 7], fov: 40 }}>
+      <Experience />
+    </Canvas>
+  );
+}
+```
+
+That is the complete default setup. The compositor discovers the glass and opaque meshes, prepares the static ray scene in a worker when available, owns the R3F render step, and disposes its GPU resources when unmounted.
+
+For devices with different performance budgets, enable adaptive transmission resolution:
+
+```jsx
+<LayeredGlassComposer adaptive />
+```
+
+Use `quality="low"`, `"medium"` (default), or `"high"` when you want a fixed tier.
+
+### Loading state
+
+Wrap consumers in the composer only when they need its status:
+
+```jsx
+import {
+  LayeredGlassComposer,
+  useLayeredGlass,
+} from 'three-layered-glass/r3f';
+
+function GlassStatus() {
+  const { status, progress, error } = useLayeredGlass();
+  // status: 'preparing' | 'ready' | 'error'
+  return null;
+}
+
+function Experience() {
+  return (
+    <LayeredGlassComposer onError={(error) => reportError(error)}>
+      <GlassStatus />
+      <Scene />
+    </LayeredGlassComposer>
+  );
+}
+```
+
+See [the complete R3F guide](./docs/r3f.md) for GLB materials, exclusions, custom scenes, post-processing, and advanced controls.
+
+## Three.js
+
+Create one material per optical look and one composer per renderer:
 
 ```js
 import * as THREE from 'three';
@@ -35,53 +115,32 @@ import {
   LayeredGlassMaterial,
 } from 'three-layered-glass';
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-
-const glass = new THREE.Mesh(
+const glassMesh = new THREE.Mesh(
   new THREE.TorusKnotGeometry(1, 0.28, 180, 32),
   new LayeredGlassMaterial({
-    ior: 1.48,
     roughness: 0.05,
     attenuationColor: '#8bcfff',
-    attenuationDistance: 1.15,
-    reflectionStrength: 1.85,
-    dispersion: 0.006,
   }),
 );
-scene.add(glass);
+scene.add(glassMesh);
 
-// Normal opaque Three.js objects are detected automatically.
-const opaque = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 2, 0.25),
-  new THREE.MeshPhysicalMaterial({ color: '#ff8b74' }),
-);
-opaque.position.z = -2;
-scene.add(opaque);
-
-const glassComposer = new LayeredGlassComposer(renderer, {
-  backend: 'auto',
-  quality: 'medium',
-  worker: true,
-});
-
-await glassComposer.prepare(scene, {
-  onProgress(progress) {
-    console.log(`BVH ${Math.round(progress * 100)}%`);
-  },
-});
+const glass = new LayeredGlassComposer(renderer);
+await glass.prepare(scene);
 
 renderer.setAnimationLoop(() => {
-  glassComposer.render(scene, camera);
+  glass.render(scene, camera);
 });
+
+// When the experience is destroyed:
+// glass.dispose();
+// glassMesh.material.dispose();
 ```
 
-`LayeredGlassComposer` uses the existing `WebGLRenderer`; it does not create a second WebGL context.
+`prepare()` makes loading deterministic. It is optional: the first `render()` starts preparation automatically and displays a fallback until the BVH is ready.
 
-## GLB and arbitrary static geometry
+## GLB meshes
 
-The BVH backend does not need `shape`, `radius`, `halfExtents`, or `center`. It uses the mesh triangles after applying their world transforms.
+Assign the material to the mesh and prepare after the model is in the scene:
 
 ```js
 const gltf = await gltfLoader.loadAsync('/product.glb');
@@ -93,72 +152,12 @@ glassMesh.material = new LayeredGlassMaterial({
   roughness: 0.03,
   attenuationColor: '#d9f2ff',
   attenuationDistance: 2,
-  dispersion: 0.004,
 });
 
-await glassComposer.prepare(scene);
+await glass.prepare(scene);
 ```
 
-Static boxes, bevelled meshes, bottles, lenses, sculptures, and other closed GLB meshes can share the same traversal backend.
-
-## Automatic opaque intersections
-
-Opaque meshes are opt-out, not opt-in. A visible `THREE.Mesh` is included when its material is non-transparent with effective opacity `1`.
-
-No blocker API is required:
-
-```js
-scene.add(opaqueMesh);
-await glassComposer.prepare(scene);
-```
-
-Exclude exceptional objects explicitly:
-
-```js
-glassComposer.setRayVisibility(helperMesh, 'ignore');
-```
-
-Or attach metadata before preparation:
-
-```js
-helperMesh.userData.layeredGlass = {
-  rayVisibility: 'ignore',
-};
-```
-
-Available overrides are:
-
-```text
-auto | opaque | glass | ignore
-```
-
-`addBlocker()` and the R3F `LayeredGlassBlocker` component remain as deprecated compatibility aliases.
-
-## Material properties
-
-```js
-const material = new LayeredGlassMaterial({
-  mode: 'volume',
-  ior: 1.48,
-  roughness: 0.05,
-  attenuationColor: '#8bcfff',
-  attenuationDistance: 1.15,
-  refractionReach: 2.1,
-  reflectionStrength: 1.85,
-  dispersion: 0.006,
-  bodyTintStrength: 1,
-});
-```
-
-### Volume glass
-
-```js
-new LayeredGlassMaterial({ mode: 'volume' });
-```
-
-The geometry should be closed, manifold, and consistently wound. Entry and exit hits are discovered from the real triangles, and Beer-Lambert attenuation uses the distance traveled through the volume.
-
-### Thin glass
+Volume glass expects closed, consistently wound geometry. Use `mode: 'thin'` for a window or another single-surface mesh:
 
 ```js
 new LayeredGlassMaterial({
@@ -167,254 +166,84 @@ new LayeredGlassMaterial({
 });
 ```
 
-Use thin mode for single-surface windows or GLB meshes that do not define a closed volume.
+## Material properties
 
-## Backends
+The common properties follow Three.js physical-material terminology:
 
-```js
-new LayeredGlassComposer(renderer, {
-  backend: 'auto',
-});
-```
+| Property | Default | Purpose |
+| --- | ---: | --- |
+| `mode` | `'volume'` | Closed volume or thin surface |
+| `thickness` | `0.01` | Finite thickness used by thin mode |
+| `ior` | `1.48` | Index of refraction |
+| `roughness` | `0.06` | Transmission and reflection roughness, `0..1` |
+| `attenuationColor` | `#b8dcff` | Color after absorption through the volume |
+| `attenuationDistance` | `3.2` | Distance over which attenuation is applied |
+| `dispersion` | `0.008` | Spectral separation strength |
 
-- `auto` — uses the analytic renderer as a temporary preparation fallback and switches to BVH when ready.
-- `bvh` — uses static triangle traversal and automatic opaque intersections.
-- `analytic` — the fast 0.3 primitive backend. It requires analytic proxies and explicit blockers for exact opaque interleaving.
+Additional optical controls are documented in the [API reference](./docs/api.md).
 
-Optional analytic proxies remain available as an explicit optimization:
+## Static-scene updates
 
-```js
-glassComposer.setIntersectionProxy(mesh, {
-  shape: 'roundedBox',
-  radius: 0.08,
-});
-```
-
-The proxy is ignored by the BVH backend.
-
-## Quality tiers
-
-```js
-const glassComposer = new LayeredGlassComposer(renderer, {
-  quality: 'medium',
-});
-```
-
-| Tier | BVH resolution | Spectral paths | Rough filter rings | Max traversals |
-| --- | ---: | ---: | ---: | ---: |
-| `low` | 0.5× | 1 | 1 | 4 |
-| `medium` | 0.75× | 3 | 1 | 8 |
-| `high` | 1× | 3 | 2 | 12 |
-
-Override individual values:
-
-```js
-const glassComposer = new LayeredGlassComposer(renderer, {
-  quality: 'medium',
-  resolutionScale: 0.6,
-  coverageScale: 1,
-  coverageSamples: 0,
-  transmissionAntialias: true,
-  maxTraversals: 6,
-  spectral: false,
-  roughSamples: 1,
-});
-```
-
-The heavy BVH resolver is preceded by a rasterized glass-surface pass, so pixels outside visible glass silhouettes return before triangle traversal. This pass keeps the nearest front-surface reflection and coverage at `coverageScale` (full resolution by default), while transmission alone runs at `resolutionScale`. The edge-aware composite reconstructs the low-resolution transmission inside the high-resolution silhouette. Lowering the BVH resolution therefore does not downscale the opaque scene or the primary glass contour.
-
-`coverageSamples` controls optional MSAA for the surface pass. It defaults to `0`; use `2` or `4` only when the device budget allows it.
-
-`transmissionAntialias` enables a validity-aware FXAA pass at the scalable ray-buffer resolution. It smooths refracted internal contours without applying MSAA to the expensive BVH resolver or the full-resolution scene. All four controls can change at runtime without rebuilding the BVH:
-
-```js
-glassComposer.setResolutionScale(0.55);
-glassComposer.setCoverageScale(1);
-glassComposer.setCoverageSamples(0);
-glassComposer.setTransmissionAntialias(true);
-```
-
-For devices with widely different fill-rate budgets, the optional controller adjusts only the expensive BVH transmission buffer:
-
-```js
-import { LayeredGlassAdaptiveQuality } from 'three-layered-glass';
-
-const adaptive = new LayeredGlassAdaptiveQuality(glassComposer, {
-  minScale: 0.45,
-  maxScale: 0.65,
-  targetFrameTime: 1000 / 30,
-});
-
-let previousTime = performance.now();
-function render(time) {
-  adaptive.update(time - previousTime, time);
-  previousTime = time;
-  glassComposer.render(scene, camera);
-  requestAnimationFrame(render);
-}
-```
-
-## Scene preparation and synchronization
-
-### Static scene
-
-```js
-await glassComposer.prepare(scene, { worker: true });
-```
-
-The worker build is the recommended production path. While preparation runs, `backend: 'auto'` can display the analytic fallback where the geometry is representable.
-
-### Geometry or transform changes
+Optical properties are synchronized automatically. Geometry and world-transform changes require a new static BVH:
 
 ```js
 glassMesh.position.x += 1;
-glassMesh.updateMatrixWorld();
-
-glassComposer.invalidateGeometry(glassMesh);
-await glassComposer.prepare(scene);
+glass.invalidateGeometry(glassMesh);
+await glass.prepare(scene);
 ```
 
-Version 0.4 bakes world-space static geometry. Rigid transforms after preparation require a rebuild.
-
-### Optical material changes
+For a known-static scene, disable periodic signature checks:
 
 ```js
-glassMaterial.ior = 1.52;
-glassMaterial.dispersion = 0.012;
-glassComposer.invalidateMaterial(glassMesh);
-```
-
-Material-only changes refresh GPU metadata without rebuilding the BVH when triangle classification is unchanged. With `sceneSync: 'auto'`, optical changes are detected automatically. Signature checks are rate-limited to once every `sceneSyncInterval` milliseconds (`250` by default) to avoid rebuilding large strings every frame.
-
-For fully manual synchronization:
-
-```js
-const glassComposer = new LayeredGlassComposer(renderer, {
+const glass = new LayeredGlassComposer(renderer, {
   sceneSync: 'manual',
 });
 ```
 
-Manual mode is recommended for known-static scenes and explicit editor pipelines. Use `invalidateMaterial()` for optical changes and `invalidateScene()` / `invalidateGeometry()` followed by `prepare()` for geometry or transform changes.
+## Post-processing
 
-```js
-// Or tune automatic polling when external code mutates the scene.
-const autoComposer = new LayeredGlassComposer(renderer, {
-  sceneSync: 'auto',
-  sceneSyncInterval: 500,
-});
-```
-
-## Memory diagnostics
-
-```js
-console.log(glassComposer.getMemoryReport());
-// {
-//   triangles,
-//   glassTriangles,
-//   opaqueTriangles,
-//   volumes,
-//   geometryBytes,
-//   bvhBytes,
-//   estimatedGpuBytes,
-//   totalBytes,
-// }
-```
-
-## React Three Fiber
-
-```jsx
-import {
-  LayeredGlass,
-  LayeredGlassComposer,
-} from 'three-layered-glass/r3f';
-
-function Experience() {
-  return (
-    <LayeredGlassComposer
-      backend="bvh"
-      quality="medium"
-      worker
-      renderPriority={1}
-    >
-      <LayeredGlass
-        materialProps={{
-          ior: 1.48,
-          roughness: 0.05,
-          attenuationColor: '#8bcfff',
-          dispersion: 0.006,
-        }}
-      >
-        <torusKnotGeometry args={[1, 0.28, 180, 32]} />
-      </LayeredGlass>
-
-      {/* Included automatically as opaque geometry. */}
-      <mesh position={[0, 0, -2]}>
-        <boxGeometry args={[2, 2, 0.25]} />
-        <meshStandardMaterial color="#ff8b74" />
-      </mesh>
-    </LayeredGlassComposer>
-  );
-}
-```
-
-Available R3F exports:
-
-- `LayeredGlassComposer`
-- `LayeredGlassMaterial`
-- `LayeredGlass`
-- `useLayeredGlassComposer`
-- `useLayeredGlassMaterial`
-- `useLayeredGlassRayVisibility`
-- `LayeredGlassEffectPass`
-- deprecated blocker helpers
-
-## EffectComposer
-
-Use `LayeredGlassPass` instead of a normal `RenderPass`:
+Use the dedicated subpath and replace the normal `RenderPass`:
 
 ```js
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { LayeredGlassPass } from 'three-layered-glass';
+import { LayeredGlassPass } from 'three-layered-glass/postprocessing';
 
-const composer = new EffectComposer(renderer);
-composer.addPass(new LayeredGlassPass(scene, camera, {
-  backend: 'bvh',
-  quality: 'medium',
-}));
-composer.addPass(new OutputPass());
+const post = new EffectComposer(renderer);
+post.addPass(new LayeredGlassPass(scene, camera));
+post.addPass(new OutputPass());
 ```
 
-## Current limits
+## Public entrypoints
 
-Version 0.4 is the first static BVH release:
+| Import | Contents |
+| --- | --- |
+| `three-layered-glass` | Material, composer, capability check |
+| `three-layered-glass/r3f` | Common declarative R3F API |
+| `three-layered-glass/postprocessing` | Three.js `EffectComposer` pass |
+| `three-layered-glass/r3f/postprocessing` | R3F pass registration |
+| `three-layered-glass/advanced` | BVH internals, quality controller, diagnostics |
+| `three-layered-glass/r3f/advanced` | Imperative R3F composer and visibility controls |
+| `three-layered-glass/legacy` | 0.2/0.3 compatibility APIs |
+| `three-layered-glass/r3f/legacy` | Deprecated blocker helpers |
 
-- Static regular `Mesh` objects are supported.
-- `InstancedMesh`, `BatchedMesh`, continuously skinned geometry, and live morph deformation are excluded from the ray scene.
-- World transforms and topology changes require BVH preparation again.
-- Volume glass requires closed geometry with consistent winding; use thin mode for single surfaces.
-- Opaque hit shading reuses the normal rasterized scene when the hit is visible from the camera and falls back to material color plus environment response otherwise.
-- Transparent non-glass materials are ignored by automatic opaque discovery.
-- Recursive reflected geometry is not traced; reflections use a deterministic environment response.
-- `front-surface` depth currently exposes the opaque depth result in the BVH backend.
+## Requirements and limits
 
-The next architecture stage is a two-level acceleration structure for cheap rigid-object transform updates.
-
-## Legacy renderer
-
-The 0.2 arbitrary-mesh ping-pong pipeline remains available for migration:
-
-```js
-import { LegacyLayeredGlassComposer } from 'three-layered-glass';
-```
-
-It uses back-position/back-normal buffers and retains global object-order limitations.
+- Node.js 20.19 or newer for installation and project tooling.
+- Three.js `WebGLRenderer` and WebGL 2.
+- Static regular `Mesh` objects using `BufferGeometry`.
+- Rigid transforms or topology changes require preparation again.
+- `InstancedMesh`, `BatchedMesh`, continuous skinning, and live morph deformation are not part of the static ray scene.
+- Transparent materials other than `LayeredGlassMaterial` are not treated as opaque ray surfaces.
 
 ## Documentation
 
-- [`docs/0.4.0-architecture.md`](./docs/0.4.0-architecture.md)
-- [`docs/0.4.0-migration.md`](./docs/0.4.0-migration.md)
-- [`docs/0.2-vs-0.3-analysis.md`](./docs/0.2-vs-0.3-analysis.md)
+- [Documentation index](./docs/README.md)
+- [Three.js API](./docs/api.md)
+- [React Three Fiber](./docs/r3f.md)
+- [Performance and quality](./docs/performance.md)
+- [1.0 migration guide](./docs/1.0.0-migration.md)
+- [Rendering architecture](./docs/architecture.md)
 
 ## License
 

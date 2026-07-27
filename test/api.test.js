@@ -3,16 +3,21 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { Pass } from 'three/addons/postprocessing/Pass.js';
 import {
-  LayeredGlassAdaptiveQuality,
   LayeredGlassComposer,
   LayeredGlassMaterial,
-  LayeredGlassPass,
+  supportsLayeredGlass,
+} from '../src/index.js';
+import {
+  LayeredGlassAdaptiveQuality,
+  RaySceneBuilder,
+} from '../src/advanced.js';
+import { LayeredGlassPass } from '../src/postprocessing.js';
+import {
   LayeredGlassRenderer,
   LegacyLayeredGlassComposer,
   LegacyLayeredGlassPass,
-  RaySceneBuilder,
-  supportsLayeredGlass,
-} from '../src/index.js';
+} from '../src/legacy.js';
+import * as publicApi from '../src/index.js';
 
 function createRendererStub() {
   const context = {
@@ -33,6 +38,14 @@ function createRendererStub() {
     },
   };
 }
+
+test('1.0 primary entrypoint exposes only the common Three.js API', () => {
+  assert.deepEqual(Object.keys(publicApi).sort(), [
+    'LayeredGlassComposer',
+    'LayeredGlassMaterial',
+    'supportsLayeredGlass',
+  ]);
+});
 
 test('LayeredGlassRenderer remains a compatibility alias', () => {
   const renderer = createRendererStub();

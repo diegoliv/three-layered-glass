@@ -1,20 +1,15 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import {
-  LayeredGlass,
   LayeredGlassComposer,
   LayeredGlassMaterial,
 } from 'three-layered-glass/r3f';
 
 function Scene() {
   return (
-    <LayeredGlassComposer
-      backend="bvh"
-      quality="medium"
-      worker
-      renderPriority={1}
-      depthMode="opaque"
-    >
+    <>
+      <LayeredGlassComposer adaptive />
+
       <ambientLight intensity={1.5} />
       <directionalLight position={[-3, 5, 4]} intensity={3} />
 
@@ -29,17 +24,15 @@ function Scene() {
         />
       </mesh>
 
-      <LayeredGlass
-        position={[0.9, 0, -0.4]}
-        materialProps={{
-          ior: 1.52,
-          roughness: 0.04,
-          attenuationColor: '#ff9ec4',
-          attenuationDistance: 3.6,
-        }}
-      >
+      <mesh position={[0.9, 0, -0.4]}>
         <icosahedronGeometry args={[1, 5]} />
-      </LayeredGlass>
+        <LayeredGlassMaterial
+          ior={1.52}
+          roughness={0.04}
+          attenuationColor="#ff9ec4"
+          attenuationDistance={3.6}
+        />
+      </mesh>
 
       {/* Ordinary opaque meshes are included automatically. */}
       <mesh position={[0, 0, -3]}>
@@ -48,7 +41,7 @@ function Scene() {
       </mesh>
 
       <OrbitControls />
-    </LayeredGlassComposer>
+    </>
   );
 }
 
