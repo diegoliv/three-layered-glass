@@ -192,8 +192,11 @@ for (const requiredR3FFeature of [
   'DRACOLoader',
   'backend="bvh"',
   'Object scale',
+  'Queue gap',
+  'getOrbitDistanceLimits',
   'horizontalRadius',
   'createModelQueueLayout',
+  'createPanelQueueSpacing',
 ]) {
   if (!demoSource.includes(requiredR3FFeature)) {
     throw new Error(
@@ -204,6 +207,7 @@ for (const requiredR3FFeature of [
 
 for (const requiredLayoutFeature of [
   'MODEL_GAP',
+  'safeGap',
   'radii[index - 1]',
   'radii[index]',
   'QUEUE_DIRECTION_X',

@@ -27,7 +27,12 @@ import {
   useLayeredGlass,
 } from '../src/r3f/index.js';
 import { LayeredGlassComposer } from '../src/r3f/advanced.js';
-import { createModelQueueLayout } from './modelLayout.js';
+import { getOrbitDistanceLimits } from './cameraLimits.js';
+import {
+  MODEL_GAP,
+  createModelQueueLayout,
+  createPanelQueueSpacing,
+} from './modelLayout.js';
 
 const MAX_PANELS = 12;
 const PANEL_WIDTH = 2.55;
@@ -153,15 +158,6 @@ function makeRandomKinds(count) {
   return kinds;
 }
 
-function getQueueSpacing(source, count) {
-
-  const density = THREE.MathUtils.clamp((count - 2) / 10, 0, 1);
-  return {
-    x: THREE.MathUtils.lerp(0.92, 0.46, density),
-    z: THREE.MathUtils.lerp(0.60, 0.38, density),
-  };
-}
-
 function extractModelShapes(scene) {
   const shapes = [];
 
@@ -217,7 +213,13 @@ function QueueMaterial({ kind, index, material }) {
   );
 }
 
-function PanelQueue({ count, thickness, kinds, material }) {
+function PanelQueue({
+  count,
+  gap,
+  kinds,
+  material,
+  thickness,
+}) {
   const geometry = useMemo(() => {
     const radius = Math.min(PANEL_RADIUS, thickness * 0.42);
     return new RoundedBoxGeometry(
@@ -228,7 +230,7 @@ function PanelQueue({ count, thickness, kinds, material }) {
       radius,
     );
   }, [thickness]);
-  const spacing = getQueueSpacing('panels', count);
+  const spacing = createPanelQueueSpacing(count, gap);
   const center = (count - 1) * 0.5;
 
   useEffect(() => () => geometry.dispose(), [geometry]);
@@ -269,9 +271,15 @@ function ModelQueue({
   kinds,
   material,
   objectScale,
+  queueGap,
   shapes,
 }) {
-  const layout = createModelQueueLayout(shapes, count, objectScale);
+  const layout = createModelQueueLayout(
+    shapes,
+    count,
+    objectScale,
+    queueGap,
+  );
 
   return (
     <group dispose={null}>
@@ -311,6 +319,7 @@ function CameraRig({
   source,
   count,
   objectScale,
+  queueGap,
   shapes,
 }) {
   const { camera, gl, size } = useThree();
@@ -330,14 +339,16 @@ function CameraRig({
 
   useLayoutEffect(() => {
     const isPanelSource = source === 'panels';
-    const spacing = getQueueSpacing(source, count);
+    const panelSpacing = isPanelSource
+      ? createPanelQueueSpacing(count, queueGap)
+      : null;
     const modelLayout = isPanelSource
       ? null
-      : createModelQueueLayout(shapes, count, objectScale);
+      : createModelQueueLayout(shapes, count, objectScale, queueGap);
     const depthSpan = modelLayout?.depthSpan ??
-      Math.max(0, count - 1) * spacing.z;
+      Math.max(0, count - 1) * (panelSpacing?.z ?? 0);
     const lateralSpan = modelLayout?.lateralSpan ??
-      Math.max(0, count - 1) * spacing.x;
+      Math.max(0, count - 1) * (panelSpacing?.x ?? 0);
     const sceneHeight = isPanelSource
       ? PANEL_HEIGHT
       : MODEL_SIZE * objectScale;
@@ -372,8 +383,9 @@ function CameraRig({
 
     controls.target.copy(target);
     camera.position.copy(target).addScaledVector(direction, distance);
-    controls.minDistance = Math.max(4.2, distance * 0.58);
-    controls.maxDistance = distance * 2.1;
+    const orbitLimits = getOrbitDistanceLimits(distance, IS_MOBILE);
+    controls.minDistance = orbitLimits.minDistance;
+    controls.maxDistance = orbitLimits.maxDistance;
     camera.near = Math.max(0.035, distance * 0.0035);
     camera.far = Math.max(90, distance * 6);
     camera.updateProjectionMatrix();
@@ -383,6 +395,7 @@ function CameraRig({
     controls,
     count,
     objectScale,
+    queueGap,
     shapes,
     size.height,
     size.width,
@@ -560,6 +573,7 @@ function Experience({
   onModelReady,
   objectScale,
   panelThickness,
+  queueGap,
   source,
 }) {
   const gltf = useLoader(
@@ -568,7 +582,13 @@ function Experience({
     configureGltfLoader,
   );
   const shapes = useMemo(() => extractModelShapes(gltf.scene), [gltf.scene]);
-  const composerKey = `${source}:${count}:${objectScale}:${kinds.join('-')}`;
+  const composerKey = [
+    source,
+    count,
+    objectScale,
+    queueGap,
+    kinds.join('-'),
+  ].join(':');
 
   useEffect(() => {
     onModelReady(shapes.length);
@@ -581,6 +601,7 @@ function Experience({
         source={source}
         count={count}
         objectScale={objectScale}
+        queueGap={queueGap}
         shapes={shapes}
       />
 
@@ -595,6 +616,7 @@ function Experience({
         {source === 'panels' ? (
           <PanelQueue
             count={count}
+            gap={queueGap}
             thickness={panelThickness}
             kinds={kinds}
             material={material}
@@ -605,6 +627,7 @@ function Experience({
             kinds={kinds}
             material={material}
             objectScale={objectScale}
+            queueGap={queueGap}
             shapes={shapes}
           />
         )}
@@ -657,6 +680,7 @@ function ControlPanel({
   opaqueCount,
   panelCount,
   panelThickness,
+  queueGap,
   source,
   status,
   onAssignment,
@@ -667,6 +691,7 @@ function ControlPanel({
   onObjectScale,
   onPanelCount,
   onPanelThickness,
+  onQueueGap,
   onSource,
 }) {
   const isPanelSource = source === 'panels';
@@ -767,6 +792,15 @@ function ControlPanel({
               }}
             />
           </label>
+
+          <RangeControl
+            label="Queue gap"
+            min={0.05}
+            max={1.5}
+            step={0.01}
+            value={queueGap}
+            onChange={onQueueGap}
+          />
 
           {isPanelSource ? (
             <RangeControl
@@ -953,6 +987,7 @@ function App() {
   const [objectScale, setObjectScale] = useState(0.8);
   const [panelCount, setPanelCount] = useState(5);
   const [panelThickness, setPanelThickness] = useState(0.36);
+  const [queueGap, setQueueGap] = useState(MODEL_GAP);
   const [randomSeed, setRandomSeed] = useState(0);
   const [source, setSource] = useState('panels');
   const count = source === 'panels' ? panelCount : objectCount;
@@ -1052,6 +1087,7 @@ function App() {
                 onModelReady={handleModelReady}
                 objectScale={objectScale}
                 panelThickness={panelThickness}
+                queueGap={queueGap}
                 source={source}
               />
             </Suspense>
@@ -1074,6 +1110,7 @@ function App() {
         opaqueCount={count - glassCount}
         panelCount={panelCount}
         panelThickness={panelThickness}
+        queueGap={queueGap}
         source={source}
         status={bvhStatus}
         onAssignment={handleAssignment}
@@ -1084,6 +1121,7 @@ function App() {
         onObjectScale={setObjectScale}
         onPanelCount={setPanelCount}
         onPanelThickness={setPanelThickness}
+        onQueueGap={setQueueGap}
         onSource={setSource}
       />
 

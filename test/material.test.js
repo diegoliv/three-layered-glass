@@ -123,6 +123,14 @@ test('rough transmission keeps the geometric interface normals stable', () => {
   assert.match(demoHtml, /src="\.\/demo\/main\.jsx"/);
   assert.match(demoSource, /label="Rough transmission"[\s\S]*?max=\{1\}/);
   assert.match(
+    demoSource,
+    /label="Queue gap"[\s\S]*?max=\{1\.5\}[\s\S]*?step=\{0\.01\}/,
+  );
+  assert.match(
+    demoSource,
+    /getOrbitDistanceLimits\(distance, IS_MOBILE\)/,
+  );
+  assert.match(
     analyticShader,
     /roughnessIntegral \+= roughScatter/,
   );
